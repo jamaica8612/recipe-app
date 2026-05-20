@@ -8,6 +8,8 @@ import { renderEditRecipe, bindEditRecipe } from './views/editRecipe.js';
 import { renderMembers, bindMembers } from './views/members.js';
 import { renderSettings, bindSettings } from './views/settings.js';
 import { renderAccount, bindAccount } from './views/account.js';
+import { renderSearch, bindSearch } from './views/search.js';
+import { renderFridge, bindFridge } from './views/fridge.js';
 
 const app = document.querySelector('#app');
 let activeRoute = currentRoute();
@@ -19,10 +21,12 @@ function navigate(path) {
 function nav(active) {
   return `
     <div class="app-bottom">
-      <nav class="nav-row">
-        <a href="#/home" class="${active === 'home' ? 'is-active' : ''}"><span class="ic">⌂</span><span>홈</span></a>
-        <a href="#/analyze" class="fab"><span class="ic">＋</span></a>
-        <a href="#/members" class="${active === 'members' ? 'is-active' : ''}"><span class="ic">👨‍👩‍👧</span><span>가족</span></a>
+      <nav class="nav-row nav-5">
+        <a href="#/home"     class="${active === 'home'     ? 'is-active' : ''}"><span class="ic">⌂</span><span>홈</span></a>
+        <a href="#/search"   class="${active === 'search'   ? 'is-active' : ''}"><span class="ic">🔍</span><span>검색</span></a>
+        <a href="#/analyze"  class="fab"><span class="ic">＋</span></a>
+        <a href="#/fridge"   class="${active === 'fridge'   ? 'is-active' : ''}"><span class="ic">🧊</span><span>냉장고</span></a>
+        <a href="#/settings" class="${active === 'settings' ? 'is-active' : ''}"><span class="ic">⚙</span><span>설정</span></a>
       </nav>
     </div>
   `;
@@ -30,6 +34,8 @@ function nav(active) {
 
 function resolveView(route) {
   if (route.path === 'analyze') return [renderAnalyze(), (root) => bindAnalyze(root, navigate)];
+  if (route.path === 'search')  return [renderSearch(),  (root) => bindSearch(root, navigate)];
+  if (route.path === 'fridge')  return [renderFridge(),  (root) => bindFridge(root, navigate)];
   if (route.path === 'preview') {
     const draftId = route.params[0];
     return [renderPreview(draftId), (root) => bindPreview(root, navigate, draftId)];
@@ -42,9 +48,9 @@ function resolveView(route) {
     const recipeId = route.params[0];
     return [renderEditRecipe(recipeId), (root) => bindEditRecipe(root, navigate, recipeId)];
   }
-  if (route.path === 'members') return [renderMembers(), (root) => bindMembers(root)];
-  if (route.path === 'settings') return [renderSettings(), (root) => bindSettings(root)];
-  if (route.path === 'account') return [renderAccount(), (root) => bindAccount(root, navigate)];
+  if (route.path === 'members')  return [renderMembers(),  (root) => bindMembers(root)];
+  if (route.path === 'settings') return [renderSettings(), (root) => bindSettings(root, navigate)];
+  if (route.path === 'account')  return [renderAccount(),  (root) => bindAccount(root, navigate)];
   return [renderHome(), (root) => bindHome(root, navigate)];
 }
 

@@ -27,11 +27,23 @@ export function renderSettings() {
 
   return {
     header: html`
-      <button class="back-btn" data-action="back">← 뒤로</button>
-      <div class="title">설정</div>
+      <div class="title">⚙ <span>설정</span></div>
       <div style="width:36px"></div>
     `,
     body: html`
+      <div class="setting-links">
+        <button class="setting-link" type="button" data-action="open-members">
+          <span class="ic">👨‍👩‍👧</span>
+          <span class="lbl"><strong>가족 구성원</strong><small>이름·이모지·색상·알러지</small></span>
+          <span class="chev">›</span>
+        </button>
+        <button class="setting-link" type="button" data-action="open-account">
+          <span class="ic">👤</span>
+          <span class="lbl"><strong>계정</strong><small>로그인·백업·로그아웃</small></span>
+          <span class="chev">›</span>
+        </button>
+      </div>
+
       <div class="callout callout--info">
         <span class="icon">i</span>
         <div><strong>${mode}</strong><br>Supabase Function URL과 anon key를 저장하면 분석 화면에서 실제 백엔드로 요청합니다.</div>
@@ -76,14 +88,17 @@ export function renderSettings() {
       </div>
     `,
     flush: false,
-    showNav: false,
+    showNav: true,
+    activeNav: 'settings',
   };
 }
 
-export function bindSettings(rootEl) {
+export function bindSettings(rootEl, navigate) {
   rootEl.addEventListener('click', async (e) => {
     const target = e.target.closest('[data-action]');
     if (target?.dataset.action === 'back') history.back();
+    if (target?.dataset.action === 'open-members') return navigate?.('/members');
+    if (target?.dataset.action === 'open-account') return navigate?.('/account');
     if (target?.dataset.action === 'clear-settings') {
       clearBackendSettings();
       location.hash = '#/settings';

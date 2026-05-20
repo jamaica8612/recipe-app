@@ -1,0 +1,93 @@
+// 검색 — 제목·재료·팁·셰프·태그 통합 검색
+import { html, raw, ytThumbnail } from '../util.js';
+import { getState, setSearchQuery } from '../store.js';
+import { SITUATION_TAGS } from '../data.js';
+
+function recipeMatches(recipe, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const fields = [
+    recipe.title,
+    recipe.sub,
+    recipe.chefName,
+    ...(recipe.ingredients || []).map((i) => i.name),
+    ...(recipe.steps || []).map((s) => s.text),
+    ...(recipe.tips || []),
+    ...((recipe.situationTagIds || [])
+      .map((id) => SITUATION_TAGS.find((t) => t.id === id)?.name)
+      .filter(Boolean)),
+  ];
+  return fields.some((v) => String(v || '').toLowerCase().includes(q));
+}
+
+export function renderSearch() {
+  const s = getState();
+  const q = s.filter.query || '';
+  const matched = q.trim() ? s.recipes.filter((r) => recipeMatches(r, q)) : [];
+
+  const cards = matched.map((r) => {
+    const cat = s.categories.find((c) => c.id === r.categoryId);
+    const thumb = ytThumbnail(r.videoId);
+    const thumbStyle = thumb ? `background-image:url('${thumb}')` : '';
+    return html`
+      <div class="recipe-card" data-action="open-recipe" data-id="${r.id}">
+        <div class="thumb" style="${raw(thumbStyle)}"></div>
+        <div class="meta">
+          <div class="title">${r.title}</div>
+          <div class="sub">${cat?.name || ''} · ${r.cookTimeMin}분${r.chefName ? ` · ${r.chefName}` : ''}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const body = q.trim() === ''
+    ? html`
+        <div class="empty">
+          <span class="emo">🔍</span>
+          <div class="ttl">레시피 검색</div>
+          <div>제목·재료·팁·셰프·태그까지 한 번에</div>
+        </div>
+      `
+    : matched.length === 0
+      ? html`
+          <div class="empty">
+            <span class="emo">🫥</span>
+            <div class="ttl">"${q}" 결과가 없어요</div>
+            <div>다른 단어로 시도해보세요</div>
+          </div>
+        `
+      : html`
+          <div class="search-meta">${matched.length}개 결과</div>
+          <div class="stack">${raw(cards)}</div>
+        `;
+
+  return {
+    header: html`
+      <div class="title">🔍 <span>검색</span></div>
+      <div style="width:36px"></div>
+    `,
+    body: html`
+      <label class="field" style="margin-bottom:14px;">
+        <input class="input" id="search-input" value="${q}" autofocus
+               placeholder="레시피, 재료, 팁, 셰프, 태그…" />
+      </label>
+      ${raw(body)}
+    `,
+    flush: false,
+    showNav: true,
+    activeNav: 'search',
+  };
+}
+
+export function bindSearch(rootEl, navigate) {
+  const input = rootEl.querySelector('#search-input');
+  input?.addEventListener('input', (e) => {
+    setSearchQuery(e.target.value);
+  });
+  rootEl.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-action]');
+    if (target?.dataset.action === 'open-recipe') {
+      navigate(`/recipe/${target.dataset.id}`);
+    }
+  });
+}
