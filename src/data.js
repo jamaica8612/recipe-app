@@ -17,12 +17,26 @@ export const CATEGORIES = [
   { id: 'etc',      name: '기타',   icon: '📦' },
 ];
 
+// 상황 태그 — 카테고리와 별개의 2차 분류 (다대다)
+export const SITUATION_TAGS = [
+  { id: 'party',     name: '홈파티',     icon: '🎉' },
+  { id: 'solo',      name: '혼밥',       icon: '🍴' },
+  { id: 'lunchbox',  name: '도시락',     icon: '🍱' },
+  { id: 'diet',      name: '다이어트',   icon: '🥗' },
+  { id: 'quick',     name: '초스피드',   icon: '⚡' },
+  { id: 'airfryer',  name: '에어프라이어',icon: '🔥' },
+  { id: 'guest',     name: '손님상',     icon: '🎁' },
+  { id: 'late',      name: '야식',       icon: '🌙' },
+];
+
 export const RECIPES = [
   {
     id: 'r1',
     title: '김치찌개',
     sub: '백종원식',
     categoryId: 'korean',
+    chefName: '백종원',
+    situationTagIds: ['solo', 'quick'],
     cookTimeMin: 30,
     servings: 4,
     memberIds: ['m1'],
@@ -46,6 +60,8 @@ export const RECIPES = [
     title: '까르보나라',
     sub: '본토식 (계란만)',
     categoryId: 'western',
+    chefName: '승우아빠',
+    situationTagIds: ['party', 'guest'],
     cookTimeMin: 20,
     servings: 2,
     memberIds: ['m2', 'm3'],
@@ -69,6 +85,8 @@ export const RECIPES = [
     title: '마파두부',
     sub: '쓰촨식',
     categoryId: 'chinese',
+    chefName: '백종원',
+    situationTagIds: ['quick', 'solo'],
     cookTimeMin: 25,
     servings: 3,
     memberIds: ['m1', 'm2'],
@@ -91,6 +109,8 @@ export const RECIPES = [
     title: '연어 데리야끼',
     sub: '간장 베이스',
     categoryId: 'japanese',
+    chefName: 'Aaron and Claire',
+    situationTagIds: ['guest', 'diet'],
     cookTimeMin: 15,
     servings: 2,
     memberIds: ['m3'],
@@ -110,6 +130,9 @@ export const RECIPES = [
 ];
 
 // 헬퍼
+export function findSituationTag(id) {
+  return SITUATION_TAGS.find((t) => t.id === id);
+}
 export function findRecipe(id) {
   return RECIPES.find((r) => r.id === id);
 }

@@ -1,50 +1,46 @@
-// 홈 — 레시피 목록 + 필터
+// 홈 — 4-view 세그먼트로 그룹핑된 레시피 목록
+// viewMode: 'category' | 'member' | 'chef' | 'situation'
 import { html, raw, ytThumbnail } from '../util.js';
 import {
   getState, getFilteredRecipes,
-  setCategoryFilter, setSearchQuery, toggleMemberFilter, toggleFavoriteFilter, toggleFavorite,
+  setSearchQuery, toggleFavoriteFilter, toggleFavorite, setViewMode,
 } from '../store.js';
+import { SITUATION_TAGS } from '../data.js';
 import { syncRecipeToSupabase } from '../api/syncSupabase.js';
+
+const VIEW_MODES = [
+  { id: 'category',  label: '카테고리', icon: '🍽️' },
+  { id: 'member',    label: '구성원',   icon: '👨‍👩‍👧' },
+  { id: 'chef',      label: '셰프',     icon: '👨‍🍳' },
+  { id: 'situation', label: '상황',     icon: '🏷️' },
+];
+
+const UNGROUPED = '__ungrouped__';
 
 export function renderHome() {
   const s = getState();
+  const viewMode = s.filter.viewMode || 'category';
   const list = getFilteredRecipes();
 
-  const categoryChips = s.categories.map((c) => html`
-    <span class="chip ${c.id === s.filter.categoryId ? 'chip--on' : ''}"
-          data-action="filter-category" data-id="${c.id}">${c.icon} ${c.name}</span>
+  const segments = VIEW_MODES.map((m) => html`
+    <button class="seg ${m.id === viewMode ? 'is-on' : ''}"
+            data-action="set-view" data-id="${m.id}">
+      <span class="seg-ic">${m.icon}</span>
+      <span class="seg-lbl">${m.label}</span>
+    </button>
   `).join('');
 
-  const memberChips = s.members.map((m) => html`
-    <span class="chip ${m.id === s.filter.memberId ? 'chip--on' : ''}"
-          data-action="filter-member" data-id="${m.id}">${m.emoji} ${m.name}</span>
-  `).join('');
+  const groups = groupRecipes(list, viewMode, s);
 
-  const recipeCards = list.map((r) => {
-    const cat = s.categories.find((category) => category.id === r.categoryId);
-    const thumb = ytThumbnail(r.videoId);
-    const thumbStyle = thumb ? `background-image:url('${thumb}')` : '';
-    return html`
-      <div class="recipe-card" data-action="open-recipe" data-id="${r.id}">
-        <div class="thumb" style="${raw(thumbStyle)}"></div>
-        <div class="meta">
-          <div class="title">${r.title}</div>
-          <div class="sub">${cat?.name || ''} · ${r.cookTimeMin}분 · ${r.servings}인분</div>
+  const groupsHtml = groups.length > 0
+    ? groups.map((g) => renderGroup(g, s)).join('')
+    : html`
+        <div class="empty">
+          <span class="emo">🍳</span>
+          <div class="ttl">아직 저장된 레시피가 없어요</div>
+          <div>아래 ＋ 버튼으로 유튜브 URL을 추가해보세요</div>
         </div>
-        <div class="fav" data-action="toggle-fav" data-id="${r.id}">
-          ${r.isFavorite ? '⭐' : raw('<span style="color:var(--c-ink-3)">☆</span>')}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  const body = list.length > 0 ? recipeCards : html`
-    <div class="empty">
-      <span class="emo">🍳</span>
-      <div class="ttl">아직 저장된 레시피가 없어요</div>
-      <div>아래 ＋ 버튼으로 유튜브 URL을 추가해보세요</div>
-    </div>
-  `;
+      `;
 
   return {
     header: html`
@@ -58,19 +54,12 @@ export function renderHome() {
       </div>
     `,
     body: html`
-      <label class="field">
-        <span class="field-label">검색</span>
-        <input class="input" id="recipe-search" value="${s.filter.query || ''}" placeholder="레시피, 재료, 팁 검색" />
+      <label class="field" style="margin-bottom:12px;">
+        <input class="input" id="recipe-search" value="${s.filter.query || ''}"
+               placeholder="🔍 레시피, 재료, 팁 검색" />
       </label>
-      <div class="filter-section">
-        <div class="filter-label">카테고리</div>
-        <div class="chip-row">${raw(categoryChips)}</div>
-      </div>
-      <div class="filter-section">
-        <div class="filter-label">구성원</div>
-        <div class="chip-row">${raw(memberChips)}</div>
-      </div>
-      <div class="stack">${raw(body)}</div>
+      <div class="view-seg">${raw(segments)}</div>
+      <div class="groups">${raw(groupsHtml)}</div>
     `,
     flush: false,
     showNav: true,
@@ -78,14 +67,137 @@ export function renderHome() {
   };
 }
 
+// ──────────────────────────────────────────────────────────
+// 그룹 만들기
+// ──────────────────────────────────────────────────────────
+function groupRecipes(list, viewMode, s) {
+  if (viewMode === 'category') return groupByCategory(list, s);
+  if (viewMode === 'member')   return groupByMember(list, s);
+  if (viewMode === 'chef')     return groupByChef(list);
+  if (viewMode === 'situation')return groupBySituation(list);
+  return groupByCategory(list, s);
+}
+
+function groupByCategory(list, s) {
+  const buckets = new Map();
+  for (const r of list) {
+    const cat = s.categories.find((c) => c.id === r.categoryId);
+    const key = cat?.id || 'etc';
+    if (!buckets.has(key)) {
+      buckets.set(key, { key, label: cat?.name || '기타', icon: cat?.icon || '📦', recipes: [] });
+    }
+    buckets.get(key).recipes.push(r);
+  }
+  return Array.from(buckets.values()).filter((g) => g.key !== 'all');
+}
+
+function groupByMember(list, s) {
+  const buckets = new Map();
+  // 각 구성원별로 그 사람이 좋아하는 레시피 모음
+  for (const m of s.members) {
+    buckets.set(m.id, { key: m.id, label: m.name, icon: m.emoji, recipes: [] });
+  }
+  for (const r of list) {
+    const members = r.memberIds || [];
+    if (members.length === 0) {
+      if (!buckets.has(UNGROUPED)) {
+        buckets.set(UNGROUPED, { key: UNGROUPED, label: '아직 태깅 안 됨', icon: '❓', recipes: [] });
+      }
+      buckets.get(UNGROUPED).recipes.push(r);
+    } else {
+      for (const mid of members) {
+        if (buckets.has(mid)) buckets.get(mid).recipes.push(r);
+      }
+    }
+  }
+  // 빈 구성원 그룹은 제외 (시각적 noise 줄임)
+  return Array.from(buckets.values()).filter((g) => g.recipes.length > 0);
+}
+
+function groupByChef(list) {
+  const buckets = new Map();
+  for (const r of list) {
+    const chef = (r.chefName || '').trim();
+    const key = chef || UNGROUPED;
+    const label = chef || '출처 없음';
+    const icon = chef ? '👨‍🍳' : '❓';
+    if (!buckets.has(key)) buckets.set(key, { key, label, icon, recipes: [] });
+    buckets.get(key).recipes.push(r);
+  }
+  // 셰프 이름 알파벳/한글 정렬, 미분류는 맨 뒤
+  return Array.from(buckets.values()).sort((a, b) => {
+    if (a.key === UNGROUPED) return 1;
+    if (b.key === UNGROUPED) return -1;
+    return a.label.localeCompare(b.label, 'ko');
+  });
+}
+
+function groupBySituation(list) {
+  const buckets = new Map();
+  for (const t of SITUATION_TAGS) {
+    buckets.set(t.id, { key: t.id, label: t.name, icon: t.icon, recipes: [] });
+  }
+  for (const r of list) {
+    const tags = r.situationTagIds || [];
+    if (tags.length === 0) {
+      if (!buckets.has(UNGROUPED)) {
+        buckets.set(UNGROUPED, { key: UNGROUPED, label: '태그 없음', icon: '❓', recipes: [] });
+      }
+      buckets.get(UNGROUPED).recipes.push(r);
+    } else {
+      for (const tid of tags) {
+        if (buckets.has(tid)) buckets.get(tid).recipes.push(r);
+      }
+    }
+  }
+  return Array.from(buckets.values()).filter((g) => g.recipes.length > 0);
+}
+
+// ──────────────────────────────────────────────────────────
+// 렌더링
+// ──────────────────────────────────────────────────────────
+function renderGroup(g, s) {
+  const cards = g.recipes.map((r) => renderRecipeCard(r, s)).join('');
+  return html`
+    <section class="group">
+      <header class="group-head">
+        <span class="group-ic">${g.icon}</span>
+        <span class="group-label">${g.label}</span>
+        <span class="group-count">${g.recipes.length}</span>
+      </header>
+      <div class="group-body">${raw(cards)}</div>
+    </section>
+  `;
+}
+
+function renderRecipeCard(r, s) {
+  const cat = s.categories.find((c) => c.id === r.categoryId);
+  const thumb = ytThumbnail(r.videoId);
+  const thumbStyle = thumb ? `background-image:url('${thumb}')` : '';
+  return html`
+    <div class="recipe-card" data-action="open-recipe" data-id="${r.id}">
+      <div class="thumb" style="${raw(thumbStyle)}"></div>
+      <div class="meta">
+        <div class="title">${r.title}</div>
+        <div class="sub">${cat?.name || ''} · ${r.cookTimeMin}분 · ${r.servings}인분${r.chefName ? ` · ${r.chefName}` : ''}</div>
+      </div>
+      <div class="fav" data-action="toggle-fav" data-id="${r.id}">
+        ${r.isFavorite ? '⭐' : raw('<span style="color:var(--c-ink-3)">☆</span>')}
+      </div>
+    </div>
+  `;
+}
+
+// ──────────────────────────────────────────────────────────
+// 바인딩
+// ──────────────────────────────────────────────────────────
 export function bindHome(rootEl, navigate) {
   rootEl.addEventListener('click', async (e) => {
     const target = e.target.closest('[data-action]');
     if (!target) return;
     const action = target.dataset.action;
     const id = target.dataset.id;
-    if (action === 'filter-category') setCategoryFilter(id);
-    else if (action === 'filter-member') toggleMemberFilter(id);
+    if (action === 'set-view') setViewMode(id);
     else if (action === 'toggle-fav-filter') toggleFavoriteFilter();
     else if (action === 'open-account') navigate('/account');
     else if (action === 'open-settings') navigate('/settings');

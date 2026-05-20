@@ -29,7 +29,7 @@ function defaultState() {
     members:    [...MEMBERS],
     categories: [...CATEGORIES],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '' },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
   };
 }
 
@@ -86,6 +86,12 @@ export function toggleFavoriteFilter() {
 }
 export function setSearchQuery(query) {
   set((s) => ({ ...s, filter: { ...s.filter, query: String(query || '') } }));
+}
+export function setViewMode(viewMode) {
+  // viewMode: 'category' | 'member' | 'chef' | 'situation'
+  const allowed = ['category', 'member', 'chef', 'situation'];
+  const next = allowed.includes(viewMode) ? viewMode : 'category';
+  set((s) => ({ ...s, filter: { ...s.filter, viewMode: next } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({
@@ -197,7 +203,7 @@ export function replaceLibrary({ members, recipes, categories }) {
     members: members || [],
     recipes: recipes || [],
     categories: categories || s.categories,
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '' },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
   }));
 }
 

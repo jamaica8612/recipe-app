@@ -22,7 +22,7 @@ function nav(active) {
       <nav class="nav-row">
         <a href="#/home" class="${active === 'home' ? 'is-active' : ''}"><span class="ic">⌂</span><span>홈</span></a>
         <a href="#/analyze" class="fab"><span class="ic">＋</span></a>
-        <a href="#/members" class="${active === 'members' ? 'is-active' : ''}"><span class="ic">👤</span><span>구성원</span></a>
+        <a href="#/members" class="${active === 'members' ? 'is-active' : ''}"><span class="ic">👨‍👩‍👧</span><span>가족</span></a>
       </nav>
     </div>
   `;
