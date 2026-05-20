@@ -135,11 +135,14 @@ serve(async (req) => {
 
   const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
   const fallbackModel = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-2.5-pro";
+  // 이전 세대 모델은 별도 풀이라 2.5 패밀리가 동시 503일 때도 살아있을 가능성 큼
+  const secondaryFallbackModel = Deno.env.get("GEMINI_SECONDARY_FALLBACK_MODEL") || "gemini-2.0-flash";
   const analysisResult = geminiKey
     ? await analyzeWithGemini({
       apiKey: geminiKey,
       model,
       fallbackModel,
+      secondaryFallbackModel,
       url: body.url || `https://youtu.be/${videoId}`,
       videoId,
     })
@@ -411,22 +414,41 @@ async function analyzeWithGemini({
   apiKey,
   model,
   fallbackModel,
+  secondaryFallbackModel,
   url,
   videoId,
 }: {
   apiKey: string;
   model: string;
   fallbackModel: string;
+  secondaryFallbackModel?: string;
   url: string;
   videoId: string;
 }): Promise<
   | { ok: true; source: "gemini"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
   | { ok: false; reason: FailureReason; message?: string }
 > {
-  const primary = await callGemini({ apiKey, model, url });
-  const shouldFallback = !primary.ok && primary.reason === "api_unavailable" && fallbackModel && fallbackModel !== model;
-  const result = shouldFallback ? await callGemini({ apiKey, model: fallbackModel, url }) : primary;
-  const usedModel = shouldFallback && result.ok ? fallbackModel : model;
+  // Cascade: primary (2.5-flash) → fallback (2.5-pro) → secondary (2.0-flash).
+  // 각 단계 자체에 503/429 재시도가 들어있어 capacity 일시 부족을 최대한 흡수.
+  const attempts: string[] = [model];
+  if (fallbackModel && fallbackModel !== model) attempts.push(fallbackModel);
+  if (secondaryFallbackModel && !attempts.includes(secondaryFallbackModel)) attempts.push(secondaryFallbackModel);
+
+  type GeminiResult =
+    | { ok: true; parsed: unknown }
+    | { ok: false; reason: FailureReason; message?: string };
+  let lastResult: GeminiResult = { ok: false, reason: "api_unavailable" };
+  let usedModel = model;
+  for (const m of attempts) {
+    lastResult = await callGemini({ apiKey, model: m, url });
+    if (lastResult.ok) {
+      usedModel = m;
+      break;
+    }
+    // schema_invalid · not_recipe 같은 결정적 실패는 모델을 바꿔도 동일하므로 즉시 중단
+    if (lastResult.reason !== "api_unavailable") break;
+  }
+  const result = lastResult;
 
   if (!result.ok) return result;
 
@@ -467,25 +489,38 @@ async function callGemini({
   | { ok: false; reason: FailureReason; message?: string }
 > {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
+  const requestBody = JSON.stringify({
+    contents: [{
+      parts: [
+        { text: recipePrompt() },
+        { file_data: { file_uri: url } },
+      ],
+    }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseJsonSchema: recipeResponseSchema(),
     },
-    body: JSON.stringify({
-      contents: [{
-        parts: [
-          { text: recipePrompt() },
-          { file_data: { file_uri: url } },
-        ],
-      }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseJsonSchema: recipeResponseSchema(),
-      },
-    }),
-  }).catch(() => null);
+  });
+
+  // 503/429 일시 부하 대비: 1.2초 백오프 후 1회 재시도
+  const maxAttempts = 2;
+  let response: Response | null = null;
+  let attempt = 0;
+  while (attempt < maxAttempts) {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      body: requestBody,
+    }).catch(() => null);
+
+    const transient = !response || response.status === 503 || response.status === 429;
+    if (!transient) break;
+    attempt += 1;
+    if (attempt < maxAttempts) {
+      console.error(`[gemini] transient status=${response?.status ?? "network"} model=${model} attempt=${attempt}/retrying`);
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
 
   if (!response) {
     return { ok: false, reason: "api_unavailable" };
