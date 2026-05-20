@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recipe · Design System v0.1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,700;8..60,900&family=Noto+Serif+KR:wght@500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* showcase-only styles (page layout, swatches, specimen) */
+  .page { max-width: 1180px; margin: 0 auto; padding: var(--s-10) var(--s-6) var(--s-20);
+          display: grid; grid-template-columns: 220px 1fr; gap: var(--s-12); }
+  @media (max-width: 920px) {
+    .page { grid-template-columns: 1fr; gap: var(--s-5); padding: var(--s-5); }
+    .ds-nav { position: static !important; }
+  }
+  .ds-nav { position: sticky; top: var(--s-6); align-self: start; }
+  .ds-nav .brand { font-family: var(--f-serif); font-weight: 900; font-size: 1.5rem;
+                   letter-spacing: -.01em; margin-bottom: 2px; }
+  .ds-nav .brand em { font-style: normal; color: var(--c-terra); }
+  .ds-nav .ver { font-size: var(--t-xs); color: var(--c-ink-3); margin-bottom: var(--s-5); }
+  .ds-nav h6 { font-size: var(--t-2xs); letter-spacing: .12em; text-transform: uppercase;
+               color: var(--c-ink-3); margin: var(--s-5) 0 var(--s-2); font-weight: 700; }
+  .ds-nav ul { list-style: none; padding: 0; margin: 0; }
+  .ds-nav a { display: block; padding: 6px 10px; border-radius: var(--r-sm);
+              color: var(--c-ink-2); font-size: var(--t-sm);
+              transition: background var(--m-fast), color var(--m-fast); }
+  .ds-nav a:hover { background: var(--c-surface); color: var(--c-ink); text-decoration: none; }
+
+  .hero { background: linear-gradient(140deg, #fff 0%, var(--c-terra-soft) 55%, #fff 100%);
+          border: 1px solid var(--c-line); border-radius: var(--r-lg);
+          padding: var(--s-10) var(--s-10) var(--s-8); margin-bottom: var(--s-6);
+          box-shadow: var(--e-2); position: relative; overflow: hidden; }
+  .hero::after { content: ""; position: absolute; top: -60px; right: -60px;
+                 width: 260px; height: 260px;
+                 background: radial-gradient(circle, rgba(178,69,44,.18), transparent 70%); }
+  .hero .eyebrow { display: inline-block; background: var(--c-terra); color: #fff;
+                   font-size: var(--t-2xs); font-weight: 700; padding: 4px 10px;
+                   border-radius: var(--r-full); letter-spacing: .06em;
+                   text-transform: uppercase; margin-bottom: var(--s-4); }
+  .hero h1 { font-family: var(--f-serif); margin: 0 0 var(--s-3);
+             font-size: clamp(2rem, 5vw, var(--t-display)); line-height: 1.1;
+             letter-spacing: -.025em; font-weight: 900; }
+  .hero h1 em { font-style: normal; color: var(--c-terra); }
+  .hero p { margin: 0; color: var(--c-ink-2); font-size: 1.125rem; max-width: 56ch; }
+
+  .swatches { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+              gap: var(--s-3); margin-top: var(--s-4); }
+  .sw { border: 1px solid var(--c-line); border-radius: var(--r-md); overflow: hidden;
+        background: var(--c-surface); }
+  .sw .chip { height: 72px; border-radius: 0; padding: 0; cursor: default; }
+  .sw .meta { padding: 10px 12px; }
+  .sw .name { font-weight: 600; font-size: var(--t-sm); color: var(--c-ink); }
+  .sw .hex { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--c-ink-3); margin-top: 2px; }
+  .sw .tok { font-family: var(--f-mono); font-size: var(--t-2xs); color: var(--c-ink-2);
+             margin-top: 4px; background: var(--c-surface-3); padding: 2px 6px;
+             border-radius: var(--r-xs); display: inline-block; }
+
+  .type-stack > div { padding: var(--s-3) 0; border-bottom: 1px dashed var(--c-line); }
+  .type-stack > div:last-child { border-bottom: none; }
+  .type-stack .row-meta { font-family: var(--f-mono); font-size: var(--t-xs);
+                          color: var(--c-ink-3); margin-bottom: 4px; }
+
+  .demo-box { background: var(--c-bg); border: 1px dashed var(--c-line-2);
+              border-radius: var(--r-md); padding: var(--s-5); }
+  .ds-footer { text-align: center; padding: var(--s-8) 0; color: var(--c-ink-3); font-size: var(--t-sm); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <aside class="ds-nav">
+    <div class="brand">🍳 Recipe<em>.</em></div>
+    <div class="ver">Design System v0.1</div>
+
+    <h6>Foundations</h6>
+    <ul>
+      <li><a href="#principles">원칙</a></li>
+      <li><a href="#color">색상</a></li>
+      <li><a href="#type">타이포그래피</a></li>
+      <li><a href="#space">간격 · 반경</a></li>
+      <li><a href="#elev">엘리베이션</a></li>
+    </ul>
+    <h6>Components</h6>
+    <ul>
+      <li><a href="#buttons">버튼</a></li>
+      <li><a href="#chips">칩 · 배지</a></li>
+      <li><a href="#cards">카드</a></li>
+      <li><a href="#inputs">입력</a></li>
+      <li><a href="#callouts">콜아웃</a></li>
+      <li><a href="#domain">도메인 컴포넌트</a></li>
+    </ul>
+    <h6>Reference</h6>
+    <ul>
+      <li><a href="#tokens">토큰 표</a></li>
+      <li><a href="#usage">사용 규칙</a></li>
+    </ul>
+  </aside>
+
+  <main>
+
+    <header class="hero">
+      <span class="eyebrow">Design System · v0.1</span>
+      <h1>따뜻하게,<br>그러나 <em>정확하게</em>.</h1>
+      <p>Recipe 앱과 기획서가 공유하는 단일 디자인 언어. Claude의 종이 같은 결을 베이스로, 머스타드·올리브의 음식 톤을 더해 식탁의 따뜻함을 표현합니다.</p>
+    </header>
+
+    <section class="ds-section" id="principles">
+      <h2>디자인 원칙</h2>
+      <p class="subtitle">모든 결정이 이 다섯 가지에서 출발한다</p>
+      <div class="grid grid--3">
+        <div class="card card--soft"><span class="emoji">📄</span><h4>종이처럼 따뜻하게</h4><p>크림 베이스와 얇은 1px 라인. 디지털 차가움 대신 노트의 결을 유지한다.</p></div>
+        <div class="card card--soft"><span class="emoji">🍅</span><h4>흙 톤 액센트</h4><p>채도 낮은 테라코타·올리브·머스타드. 비비드 컬러는 쓰지 않는다.</p></div>
+        <div class="card card--soft"><span class="emoji">✍️</span><h4>세리프 헤딩</h4><p>제목은 세리프로 권위와 손편지의 결을. 본문은 산세리프로 가독성.</p></div>
+        <div class="card card--soft"><span class="emoji">🫁</span><h4>호흡감</h4><p>여백을 아끼지 않는다. 글자보다 공간이 메시지를 만든다.</p></div>
+        <div class="card card--soft"><span class="emoji">🎯</span><h4>장식 최소</h4><p>의미 없는 일러스트·그라데이션·아이콘 잔치 금지. 콘텐츠가 먼저.</p></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="color">
+      <h2>색상</h2>
+      <p class="subtitle">3개 액센트 + 따뜻한 중성 · 시맨틱 컬러 별도</p>
+
+      <h3>브랜드 액센트</h3>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#b2452c"></div><div class="meta"><div class="name">Terracotta</div><div class="hex">#b2452c</div><span class="tok">--c-terra</span></div></div>
+        <div class="sw"><div class="chip" style="background:#5d6d2e"></div><div class="meta"><div class="name">Olive</div><div class="hex">#5d6d2e</div><span class="tok">--c-olive</span></div></div>
+        <div class="sw"><div class="chip" style="background:#c98a2b"></div><div class="meta"><div class="name">Mustard</div><div class="hex">#c98a2b</div><span class="tok">--c-mustard</span></div></div>
+      </div>
+
+      <h3>표면 (Surfaces)</h3>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#f4efe6"></div><div class="meta"><div class="name">BG</div><div class="hex">#f4efe6</div><span class="tok">--c-bg</span></div></div>
+        <div class="sw"><div class="chip" style="background:#ebe3d4"></div><div class="meta"><div class="name">BG sunk</div><div class="hex">#ebe3d4</div><span class="tok">--c-bg-sunk</span></div></div>
+        <div class="sw"><div class="chip" style="background:#ffffff; border-bottom:1px solid var(--c-line)"></div><div class="meta"><div class="name">Surface</div><div class="hex">#ffffff</div><span class="tok">--c-surface</span></div></div>
+        <div class="sw"><div class="chip" style="background:#faf6ee"></div><div class="meta"><div class="name">Surface 2</div><div class="hex">#faf6ee</div><span class="tok">--c-surface-2</span></div></div>
+        <div class="sw"><div class="chip" style="background:#f0e8d6"></div><div class="meta"><div class="name">Surface 3</div><div class="hex">#f0e8d6</div><span class="tok">--c-surface-3</span></div></div>
+      </div>
+
+      <h3>잉크 (Text)</h3>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#1c1612"></div><div class="meta"><div class="name">Ink</div><div class="hex">#1c1612</div><span class="tok">--c-ink</span></div></div>
+        <div class="sw"><div class="chip" style="background:#564a40"></div><div class="meta"><div class="name">Ink 2</div><div class="hex">#564a40</div><span class="tok">--c-ink-2</span></div></div>
+        <div class="sw"><div class="chip" style="background:#8a7d70"></div><div class="meta"><div class="name">Ink 3</div><div class="hex">#8a7d70</div><span class="tok">--c-ink-3</span></div></div>
+      </div>
+
+      <h3>시맨틱</h3>
+      <div class="swatches">
+        <div class="sw"><div class="chip" style="background:#5d6d2e"></div><div class="meta"><div class="name">Success</div><span class="tok">--c-success</span></div></div>
+        <div class="sw"><div class="chip" style="background:#c98a2b"></div><div class="meta"><div class="name">Warn</div><span class="tok">--c-warn</span></div></div>
+        <div class="sw"><div class="chip" style="background:#a8341e"></div><div class="meta"><div class="name">Danger</div><span class="tok">--c-danger</span></div></div>
+        <div class="sw"><div class="chip" style="background:#4a6477"></div><div class="meta"><div class="name">Info</div><span class="tok">--c-info</span></div></div>
+      </div>
+
+      <div class="callout callout--olive" style="margin-top:24px;">
+        <span class="icon">🎨</span>
+        <div><strong>사용 규칙</strong> — Terracotta는 primary CTA·핵심 강조에만. Olive는 성공/완료, Mustard는 강조·즐겨찾기 등 부수적 하이라이트. 한 화면에 3개 액센트를 동시에 진하게 쓰지 않는다.</div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="type">
+      <h2>타이포그래피</h2>
+      <p class="subtitle">Source Serif 4 · Noto Serif KR (제목) + Inter (본문)</p>
+      <div class="type-stack">
+        <div><div class="row-meta">Display · 56 / 1.05 / -.03em · Serif 900</div><div class="t-display">김치찌개</div></div>
+        <div><div class="row-meta">H1 · 40 / 1.15 / -.02em · Serif 800</div><div class="t-h1">유튜브에서 가족 레시피로</div></div>
+        <div><div class="row-meta">H2 · 30 / 1.2 / -.015em · Serif 800</div><div class="t-h2">분석 실패 폴백</div></div>
+        <div><div class="row-meta">H3 · 22 / 1.3 · Sans 700</div><div class="t-h3">조리 순서를 자동으로 정리해드립니다</div></div>
+        <div><div class="row-meta">Body · 16 / 1.65 · Sans 400</div><div class="t-body">URL 하나 던지면 Gemini가 재료·순서·팁을 정리합니다. 같은 영상은 한 번만 분석해 비용을 줄입니다.</div></div>
+        <div><div class="row-meta">Small · 14 · Sans 400</div><div class="t-sm">캐시된 영상은 0초·0원으로 즉시 결과 제공.</div></div>
+        <div><div class="row-meta">Caption · 12 / .02em · Sans 400</div><div class="t-caption">2026-05-20 · v0.3</div></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="space">
+      <h2>간격 · 반경</h2>
+      <p class="subtitle">4px 베이스 · radius 6단</p>
+
+      <h3>스페이싱 스케일</h3>
+      <table class="token-table">
+        <thead><tr><th>토큰</th><th>값</th><th>용도</th></tr></thead>
+        <tbody>
+          <tr><td><code>--s-1</code></td><td>4px</td><td>아이콘-텍스트 간격</td></tr>
+          <tr><td><code>--s-2</code></td><td>8px</td><td>칩 간격, 폼 라벨</td></tr>
+          <tr><td><code>--s-3</code></td><td>12px</td><td>카드 내부 단락</td></tr>
+          <tr><td><code>--s-4</code></td><td>16px</td><td>기본 단락 간격</td></tr>
+          <tr><td><code>--s-5</code></td><td>20px</td><td>카드 패딩</td></tr>
+          <tr><td><code>--s-6</code></td><td>24px</td><td>섹션 내부 블록 간격</td></tr>
+          <tr><td><code>--s-8</code></td><td>32px</td><td>섹션 패딩</td></tr>
+          <tr><td><code>--s-10</code></td><td>40px</td><td>히어로 상하 여백</td></tr>
+          <tr><td><code>--s-12</code></td><td>48px</td><td>대섹션 간격</td></tr>
+          <tr><td><code>--s-16</code></td><td>64px</td><td>페이지 상단 여백</td></tr>
+        </tbody>
+      </table>
+
+      <h3>반경 (Radius)</h3>
+      <div class="row" style="gap:16px;">
+        <div style="text-align:center;"><div style="width:64px; height:64px; background:var(--c-terra-soft); border:1px solid var(--c-line); border-radius:4px;"></div><div class="t-caption">xs · 4px</div></div>
+        <div style="text-align:center;"><div style="width:64px; height:64px; background:var(--c-terra-soft); border:1px solid var(--c-line); border-radius:8px;"></div><div class="t-caption">sm · 8px</div></div>
+        <div style="text-align:center;"><div style="width:64px; height:64px; background:var(--c-terra-soft); border:1px solid var(--c-line); border-radius:12px;"></div><div class="t-caption">md · 12px</div></div>
+        <div style="text-align:center;"><div style="width:64px; height:64px; background:var(--c-terra-soft); border:1px solid var(--c-line); border-radius:16px;"></div><div class="t-caption">lg · 16px</div></div>
+        <div style="text-align:center;"><div style="width:64px; height:64px; background:var(--c-terra-soft); border:1px solid var(--c-line); border-radius:24px;"></div><div class="t-caption">xl · 24px</div></div>
+        <div style="text-align:center;"><div style="width:64px; height:64px; background:var(--c-terra-soft); border:1px solid var(--c-line); border-radius:999px;"></div><div class="t-caption">full</div></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="elev">
+      <h2>엘리베이션</h2>
+      <p class="subtitle">3단계만 사용 · 그림자는 짙지 않게</p>
+      <div class="grid grid--3">
+        <div style="background:#fff; padding:24px; border-radius:12px; border:1px solid var(--c-line); box-shadow:var(--e-1); text-align:center;"><div class="t-h3">e-1</div><div class="t-caption">카드 hover 직전</div></div>
+        <div style="background:#fff; padding:24px; border-radius:12px; box-shadow:var(--e-2); text-align:center;"><div class="t-h3">e-2</div><div class="t-caption">기본 카드, 패널</div></div>
+        <div style="background:#fff; padding:24px; border-radius:12px; box-shadow:var(--e-3); text-align:center;"><div class="t-h3">e-3</div><div class="t-caption">모달, 드롭다운</div></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="buttons">
+      <h2>버튼</h2>
+      <p class="subtitle">primary 1개 / 화면 · pill 형태 · 동작 명시</p>
+      <h3>스타일</h3>
+      <div class="row demo-box">
+        <button class="btn btn--primary">분석 시작</button>
+        <button class="btn btn--secondary">취소</button>
+        <button class="btn btn--ghost">건너뛰기</button>
+        <button class="btn btn--dark">조리 모드</button>
+        <button class="btn btn--olive">완료로 표시</button>
+        <button class="btn btn--primary" disabled>비활성</button>
+      </div>
+      <h3>크기</h3>
+      <div class="row demo-box">
+        <button class="btn btn--primary btn--sm">Small</button>
+        <button class="btn btn--primary">Medium</button>
+        <button class="btn btn--primary btn--lg">Large</button>
+      </div>
+      <h3>블록</h3>
+      <div class="demo-box" style="max-width:320px;">
+        <button class="btn btn--primary btn--lg btn--block">유튜브에서 가져오기</button>
+      </div>
+    </section>
+
+    <section class="ds-section" id="chips">
+      <h2>칩 · 배지</h2>
+      <p class="subtitle">필터·태그·상태 표시</p>
+      <h3>필터 칩</h3>
+      <div class="chip-row demo-box">
+        <span class="chip chip--on">전체</span><span class="chip">한식</span><span class="chip">양식</span><span class="chip">일식</span><span class="chip">중식</span><span class="chip">디저트</span>
+      </div>
+      <h3>구성원 칩</h3>
+      <div class="chip-row demo-box">
+        <span class="chip chip--on">👨 아빠</span><span class="chip chip--olive-on">👧 딸</span><span class="chip">👩 엄마</span><span class="chip chip--outline">＋ 추가</span>
+      </div>
+      <h3>배지</h3>
+      <div class="row demo-box">
+        <span class="badge badge--terra">NEW</span><span class="badge badge--olive">완료</span><span class="badge badge--mustard">Pro</span><span class="badge badge--neutral">v2</span><span class="badge badge--success">분석 성공</span><span class="badge badge--warn">자막 부족</span><span class="badge badge--danger">실패</span>
+      </div>
+    </section>
+
+    <section class="ds-section" id="cards">
+      <h2>카드</h2>
+      <p class="subtitle">소프트 / 기본 / 강조</p>
+      <div class="grid grid--3">
+        <div class="card"><span class="emoji">🤖</span><h4>Gemini 분석</h4><p>URL → 재료 / 단계 / 팁 JSON 자동 추출.</p></div>
+        <div class="card card--featured"><span class="emoji">📤</span><h4>유튜브 공유로 진입</h4><p>유튜브 앱의 "공유" 메뉴에서 바로 선택, 즉시 분석.</p></div>
+        <div class="card card--soft"><span class="emoji">👨‍👩‍👧</span><h4>구성원 관리</h4><p>이름·이모지·색상으로 가족 추가, 레시피별 태깅.</p></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="inputs">
+      <h2>입력</h2>
+      <p class="subtitle">접근성 라벨 필수 · focus ring 3px</p>
+      <div class="demo-box grid grid--2">
+        <div class="field"><label class="field-label">유튜브 URL</label><input class="input" placeholder="https://youtu.be/..." /><div class="field-help">짧은 형식·shorts 모두 인식합니다</div></div>
+        <div class="field"><label class="field-label">레시피 메모</label><textarea class="textarea" placeholder="이 레시피의 한마디"></textarea></div>
+        <div class="field"><label class="field-label">카테고리</label><select class="select"><option>한식</option><option>양식</option><option>일식</option></select></div>
+        <div class="field"><label class="field-label">이메일</label><input class="input input--error" value="not-an-email" /><div class="field-error">올바른 이메일 형식이 아닙니다</div></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="callouts">
+      <h2>콜아웃</h2>
+      <p class="subtitle">정보 · 성공 · 경고 · 실패</p>
+      <div class="stack">
+        <div class="callout"><span class="icon">🍅</span><div><strong>비용 절감 핵심</strong> — 100명이 같은 영상을 분석해도 Gemini 호출은 1번.</div></div>
+        <div class="callout callout--olive"><span class="icon">✅</span><div><strong>분석 완료</strong> — 김치찌개 레시피가 저장되었습니다.</div></div>
+        <div class="callout callout--mustard"><span class="icon">⚠️</span><div><strong>자막 부족</strong> — 일부 단계가 비어있습니다. 보정 모드에서 확인해주세요.</div></div>
+        <div class="callout callout--danger"><span class="icon">🚫</span><div><strong>분석 실패</strong> — 요리 영상이 아닙니다. 카운트는 차감되지 않았습니다.</div></div>
+        <div class="callout callout--info"><span class="icon">ℹ️</span><div><strong>오프라인 모드</strong> — 저장된 레시피만 표시됩니다.</div></div>
+      </div>
+    </section>
+
+    <section class="ds-section" id="domain">
+      <h2>도메인 컴포넌트</h2>
+      <p class="subtitle">앱 도메인 전용 — 레시피 카드 · 단계 · 아바타 · 하단 내비</p>
+
+      <h3>레시피 카드</h3>
+      <div class="demo-box stack" style="max-width:380px;">
+        <div class="recipe-card"><div class="thumb"></div><div class="meta"><div class="title">김치찌개 (백종원식)</div><div class="sub">한식 · 30분 · 4인분</div></div><div class="fav">⭐</div></div>
+        <div class="recipe-card"><div class="thumb" style="background:#9a8770;"></div><div class="meta"><div class="title">까르보나라 — 본토식</div><div class="sub">양식 · 20분 · 2인분</div></div><div class="fav" style="color:var(--c-ink-3)">☆</div></div>
+      </div>
+
+      <h3>조리 단계</h3>
+      <div class="demo-box">
+        <div class="steps">
+          <div class="step-item"><span class="num">1</span><span class="text">김치를 적당히 썰어 팬에 기름을 두르고 볶는다.</span><span class="ts">0:42</span></div>
+          <div class="step-item is-active"><span class="num">2</span><span class="text">물을 붓고 끓이며 돼지고기를 넣는다.</span><span class="ts">2:15</span></div>
+          <div class="step-item"><span class="num">3</span><span class="text">두부와 대파를 넣고 10분간 더 끓인다.</span><span class="ts">5:30</span></div>
+        </div>
+      </div>
+
+      <h3>구성원 아바타</h3>
+      <div class="row demo-box">
+        <div style="text-align:center;"><span class="avatar is-terra">👨</span><div class="t-caption" style="margin-top:6px;">아빠</div></div>
+        <div style="text-align:center;"><span class="avatar is-olive">👧</span><div class="t-caption" style="margin-top:6px;">딸</div></div>
+        <div style="text-align:center;"><span class="avatar is-mustard">👩</span><div class="t-caption" style="margin-top:6px;">엄마</div></div>
+        <div style="text-align:center;"><span class="avatar is-plum">👦</span><div class="t-caption" style="margin-top:6px;">아들</div></div>
+        <div style="text-align:center;"><span class="avatar avatar--lg is-terra">👨</span><div class="t-caption" style="margin-top:6px;">large</div></div>
+        <div style="text-align:center;"><span class="avatar avatar--sm is-olive">👧</span><div class="t-caption" style="margin-top:6px;">small</div></div>
+      </div>
+
+      <h3>하단 내비게이션</h3>
+      <div class="demo-box" style="display:flex; justify-content:center;">
+        <nav class="bottom-nav">
+          <a href="#" class="is-active"><span class="ic">🏠</span><span>홈</span></a>
+          <a href="#"><span class="ic">＋</span><span>추가</span></a>
+          <a href="#"><span class="ic">👤</span><span>가족</span></a>
+        </nav>
+      </div>
+    </section>
+
+    <section class="ds-section" id="tokens">
+      <h2>토큰 표</h2>
+      <p class="subtitle">CSS 커스텀 프로퍼티 전체 목록 — <code>styles.css</code>가 단일 출처</p>
+      <table class="token-table">
+        <thead><tr><th>분류</th><th>토큰</th><th>값</th></tr></thead>
+        <tbody>
+          <tr><td>Surface</td><td><code>--c-bg</code></td><td>#f4efe6</td></tr>
+          <tr><td>Surface</td><td><code>--c-surface</code></td><td>#ffffff</td></tr>
+          <tr><td>Surface</td><td><code>--c-surface-2</code></td><td>#faf6ee</td></tr>
+          <tr><td>Surface</td><td><code>--c-surface-3</code></td><td>#f0e8d6</td></tr>
+          <tr><td>Ink</td><td><code>--c-ink</code></td><td>#1c1612</td></tr>
+          <tr><td>Ink</td><td><code>--c-ink-2</code></td><td>#564a40</td></tr>
+          <tr><td>Ink</td><td><code>--c-ink-3</code></td><td>#8a7d70</td></tr>
+          <tr><td>Brand</td><td><code>--c-terra</code></td><td>#b2452c</td></tr>
+          <tr><td>Brand</td><td><code>--c-olive</code></td><td>#5d6d2e</td></tr>
+          <tr><td>Brand</td><td><code>--c-mustard</code></td><td>#c98a2b</td></tr>
+          <tr><td>Type</td><td><code>--f-serif</code></td><td>"Source Serif 4", "Noto Serif KR", …</td></tr>
+          <tr><td>Type</td><td><code>--f-sans</code></td><td>"Inter", system-ui, …</td></tr>
+          <tr><td>Type</td><td><code>--f-mono</code></td><td>"JetBrains Mono", …</td></tr>
+          <tr><td>Radius</td><td><code>--r-sm / md / lg</code></td><td>8 / 12 / 16 px</td></tr>
+          <tr><td>Elevation</td><td><code>--e-1 / e-2 / e-3</code></td><td>3단계</td></tr>
+          <tr><td>Motion</td><td><code>--m-fast / m-base</code></td><td>120ms / 200ms</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="ds-section" id="usage">
+      <h2>사용 규칙</h2>
+      <p class="subtitle">합의 사항 · 충돌 시 이 페이지가 단일 출처(Single Source of Truth)</p>
+      <h3>Do</h3>
+      <ul>
+        <li>새로운 색상이 필요하면 먼저 기존 토큰으로 가능한지 검토</li>
+        <li>제목은 항상 세리프, 본문은 산세리프</li>
+        <li>한 화면에 primary CTA는 최대 1개</li>
+        <li>그림자는 e-1 ~ e-3 외에 만들지 않는다</li>
+        <li>아이콘이 의미를 추가하지 않으면 빼라</li>
+      </ul>
+      <h3>Don't</h3>
+      <ul>
+        <li>비비드 컬러(채도 80%+) 사용 금지</li>
+        <li>그라데이션 배경을 카드/버튼에 쓰지 않는다 (히어로 제외)</li>
+        <li>둥근 모서리·각진 모서리 혼용 금지 (한 화면 내)</li>
+        <li>이모지·아이콘을 장식 목적으로 나열 금지</li>
+        <li>토큰을 무시하고 인라인 색상값 하드코딩 금지</li>
+      </ul>
+      <h3>적용 우선순위</h3>
+      <ol>
+        <li><strong>styles.css</strong> — 토큰·컴포넌트 단일 출처</li>
+        <li><strong>design-system.html</strong> — 시각적 레퍼런스 (이 페이지)</li>
+        <li><strong>plan.html</strong> — 기획서, 같은 styles.css 사용</li>
+        <li><strong>앱 코드</strong> — Capacitor 웹앱이 같은 styles.css import</li>
+      </ol>
+      <div class="callout">
+        <span class="icon">📐</span>
+        <div><strong>구조</strong> — <code>styles.css</code>에 토큰·컴포넌트가 모두 정의되어 있고, HTML 파일들은 이를 import해 동일한 클래스를 사용한다.</div>
+      </div>
+    </section>
+
+    <footer class="ds-footer">
+      🍳 Recipe Design System · v0.1 · 2026-05-20
+    </footer>
+
+  </main>
+</div>
+</body>
+</html>

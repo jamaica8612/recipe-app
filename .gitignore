@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.local
+.DS_Store
+*.log
+
+# Playwright / 테스트 산출물
+test-results
+playwright-report
+
+# Supabase CLI 로컬 캐시
+supabase/.temp
+supabase/.branches

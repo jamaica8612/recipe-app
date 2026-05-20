@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#b2452c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Recipe" />
+  <title>Recipe — 가족 레시피</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,700;8..60,900&family=Noto+Serif+KR:wght@500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* 앱 전용 모바일 셸 (390px 기준 모바일 화면) */
+    body { display: flex; justify-content: center;
+           padding: 24px 16px 0; min-height: 100vh; }
+    .app-shell {
+      width: 100%; max-width: 420px;
+      background: var(--c-surface);
+      border: 1px solid var(--c-line);
+      border-radius: 28px;
+      box-shadow: var(--e-2);
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      min-height: calc(100vh - 48px);
+      max-height: calc(100vh - 48px);
+    }
+    .app-header {
+      padding: 18px 20px 12px;
+      border-bottom: 1px solid var(--c-line);
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px;
+    }
+    .app-header .title {
+      font-family: var(--f-serif); font-weight: 800;
+      font-size: 1.25rem; letter-spacing: -.01em;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .app-header .actions { display: flex; gap: 8px; }
+    .icon-btn {
+      width: 36px; height: 36px; border-radius: var(--r-full);
+      background: var(--c-surface-2); border: 1px solid var(--c-line);
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 16px; color: var(--c-ink);
+      transition: background var(--m-fast);
+    }
+    .icon-btn:hover { background: var(--c-surface-3); }
+    .icon-btn.is-primary { background: var(--c-terra); color: #fff; border-color: var(--c-terra); }
+    .icon-btn.is-primary:hover { background: var(--c-terra-2); }
+    .back-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 15px; color: var(--c-ink-2); padding: 4px 0;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .back-btn:hover { color: var(--c-ink); }
+
+    .app-body {
+      flex: 1; overflow-y: auto;
+      padding: 16px 20px 24px;
+    }
+    .app-body.is-flush { padding: 0; }
+    .app-bottom {
+      border-top: 1px solid var(--c-line);
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      background: var(--c-surface);
+    }
+    .nav-row {
+      display: flex; justify-content: space-around; align-items: center;
+    }
+    .nav-row a {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 6px 16px; border-radius: var(--r-md);
+      font-size: var(--t-2xs); color: var(--c-ink-3);
+      text-decoration: none; transition: color var(--m-fast), background var(--m-fast);
+    }
+    .nav-row a .ic { font-size: 20px; }
+    .nav-row a.is-active { color: var(--c-terra); background: var(--c-terra-soft); }
+    .nav-row a.fab {
+      background: var(--c-terra); color: #fff;
+      width: 52px; height: 52px; border-radius: var(--r-full);
+      transform: translateY(-12px);
+      box-shadow: var(--e-3);
+      padding: 0; justify-content: center;
+    }
+    .nav-row a.fab .ic { font-size: 22px; }
+
+    /* 페이지 공통 헤더 */
+    .page-title {
+      font-family: var(--f-serif); font-weight: 800;
+      font-size: 1.5rem; letter-spacing: -.015em;
+      margin: 0 0 4px;
+    }
+    .page-sub { color: var(--c-ink-3); font-size: var(--t-sm); margin: 0 0 16px; }
+
+    /* 빈 상태 */
+    .empty {
+      text-align: center; padding: 48px 20px;
+      color: var(--c-ink-3);
+    }
+    .empty .emo { font-size: 40px; display: block; margin-bottom: 12px; }
+    .empty .ttl { font-weight: 700; color: var(--c-ink-2); margin-bottom: 4px; }
+
+    /* 필터 영역 */
+    .filter-section { margin-bottom: 14px; }
+    .filter-label {
+      font-size: var(--t-2xs); font-weight: 700; color: var(--c-ink-3);
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+    }
+
+    /* Recipe detail */
+    .detail-hero {
+      background: var(--c-terra-soft);
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--c-line);
+    }
+    .detail-hero .cat {
+      font-size: var(--t-2xs); font-weight: 700; color: var(--c-terra);
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    .detail-hero h1 {
+      font-family: var(--f-serif); font-weight: 800;
+      font-size: 1.625rem; letter-spacing: -.015em;
+      margin: 4px 0 6px; line-height: 1.2;
+    }
+    .detail-hero .sub { color: var(--c-ink-2); font-size: var(--t-sm); margin: 0 0 10px; }
+    .detail-hero .stats {
+      display: flex; gap: 16px; font-size: var(--t-xs);
+      color: var(--c-ink-2); font-family: var(--f-mono);
+    }
+    .detail-section { padding: 16px 20px; border-bottom: 1px solid var(--c-line); }
+    .detail-section:last-child { border-bottom: none; }
+    .detail-section h3 {
+      font-family: var(--f-sans); font-size: var(--t-h4); font-weight: 700;
+      margin: 0 0 10px; display: flex; align-items: center; gap: 8px;
+    }
+    .detail-section h3::before {
+      content: ""; width: 3px; height: 14px;
+      background: var(--c-terra); border-radius: 2px;
+    }
+    .ing-list { list-style: none; padding: 0; margin: 0; }
+    .ing-list li {
+      display: flex; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px dashed var(--c-line);
+      font-size: var(--t-sm);
+    }
+    .ing-list li:last-child { border-bottom: none; }
+    .ing-list .amt { color: var(--c-ink-3); font-family: var(--f-mono); }
+    .tip-list { list-style: none; padding: 0; margin: 0; }
+    .tip-list li {
+      padding: 8px 12px; background: var(--c-surface-2);
+      border-radius: var(--r-sm); font-size: var(--t-sm);
+      margin-bottom: 6px; color: var(--c-ink-2);
+    }
+    .tip-list li::before { content: "💡 "; }
+
+    /* Analyze screen */
+    .analyze-hint {
+      padding: 14px 16px; background: var(--c-surface-2);
+      border-radius: var(--r-md); font-size: var(--t-sm);
+      color: var(--c-ink-2); margin: 16px 0;
+      border: 1px dashed var(--c-line-2);
+    }
+    .spinner-box {
+      text-align: center; padding: 32px 20px;
+      background: var(--c-terra-soft); border-radius: var(--r-md);
+      margin-top: 16px;
+    }
+    .spinner-box .dots { font-size: 24px; animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+
+    /* Members screen */
+    .member-list { list-style: none; padding: 0; margin: 0; }
+    .member-list li {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px; background: var(--c-surface-2);
+      border: 1px solid var(--c-line); border-radius: var(--r-md);
+      margin-bottom: 8px; cursor: pointer;
+    }
+    .member-list li:hover { background: var(--c-surface-3); }
+    .member-list .name { flex: 1; font-weight: 600; color: var(--c-ink); }
+  </style>
+</head>
+<body>
+  <div class="app-shell" id="app">
+    <!-- 뷰가 여기에 렌더링됨 -->
+  </div>
+
+  <script type="module" src="src/app.js"></script>
+  <script>
+    // PWA 서비스 워커 등록 (오프라인 + 홈화면 추가 가능)
+    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>

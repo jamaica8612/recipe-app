@@ -1,0 +1,4 @@
+project_id = "recipe-app"
+
+[functions.analyze-video]
+verify_jwt = false
