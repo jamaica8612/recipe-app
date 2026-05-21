@@ -36,20 +36,11 @@ type AuthUser = {
   email: string | null;
 };
 
-type QuotaState = {
-  allowed: boolean;
-  charged: boolean;
-  remaining: number | null;
-  message?: string;
-};
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
-const freeMonthlyLimit = Number(Deno.env.get("FREE_MONTHLY_ANALYSES") || "20");
 
 const failureCopy: Record<FailureReason, string> = {
   not_recipe: "요리 영상으로 판단되지 않았습니다.",
@@ -126,12 +117,6 @@ serve(async (req) => {
   }
 
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  const quota = geminiKey && authUser
-    ? await readQuotaState(supabase, authUser)
-    : { allowed: true, charged: false, remaining: null };
-  if (!quota.allowed) {
-    return json(failure("edge", "api_unavailable", quota.message, quota), 200);
-  }
 
   const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
   // 2.5-flash-lite는 가벼운 모델이라 별도 capacity pool에 가까움 — flash/pro 고수요 시 먼저 회피.
@@ -174,18 +159,14 @@ serve(async (req) => {
     return json(failure("edge", "api_unavailable"), 500);
   }
 
-  const chargedQuota = analysisResult.source === "gemini" && authUser
-    ? await chargeQuota(supabase, authUser)
-    : quota;
-
   return json({
     ok: true,
     source: analysisResult.source,
     analysis,
     failure: null,
     quota: {
-      charged: chargedQuota.charged,
-      remaining: chargedQuota.remaining,
+      charged: false,
+      remaining: null,
     },
   });
 });
@@ -294,105 +275,14 @@ function failure(
   source: AnalyzeResponse["source"],
   reason: FailureReason,
   message = failureCopy[reason],
-  quota: QuotaState = { charged: false, remaining: null, allowed: true },
 ): AnalyzeResponse {
   return {
     ok: false,
     source,
     analysis: null,
     failure: { reason, message, chargeable: false },
-    quota: { charged: false, remaining: quota.remaining },
+    quota: { charged: false, remaining: null },
   };
-}
-
-async function readQuotaState(
-  supabase: ReturnType<typeof createClient>,
-  user: AuthUser,
-): Promise<QuotaState> {
-  const profile = await ensureFreshProfile(supabase, user);
-  if (!profile) return { allowed: true, charged: false, remaining: null };
-
-  const limit = planLimit(profile.plan);
-  if (limit == null) return { allowed: true, charged: false, remaining: null };
-
-  const used = Number(profile.monthly_analyses_used || 0);
-  const remaining = Math.max(0, limit - used);
-  return {
-    allowed: remaining > 0,
-    charged: false,
-    remaining,
-    message: remaining > 0 ? undefined : "이번 달 분석 안전 한도를 모두 사용했습니다.",
-  };
-}
-
-async function chargeQuota(
-  supabase: ReturnType<typeof createClient>,
-  user: AuthUser,
-): Promise<QuotaState> {
-  const profile = await ensureFreshProfile(supabase, user);
-  if (!profile) return { allowed: true, charged: false, remaining: null };
-
-  const limit = planLimit(profile.plan);
-  if (limit == null) return { allowed: true, charged: true, remaining: null };
-
-  const used = Number(profile.monthly_analyses_used || 0) + 1;
-  const remaining = Math.max(0, limit - used);
-  await supabase
-    .from("profiles")
-    .update({ monthly_analyses_used: used })
-    .eq("id", user.id);
-
-  return { allowed: true, charged: true, remaining };
-}
-
-async function ensureFreshProfile(supabase: ReturnType<typeof createClient>, user: AuthUser) {
-  const { data } = await supabase
-    .from("profiles")
-    .select("id, plan, monthly_analyses_used, monthly_reset_at")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  let profile = data;
-  if (!profile) {
-    const insert = await supabase
-      .from("profiles")
-      .insert({
-        id: user.id,
-        email: user.email,
-        monthly_analyses_used: 0,
-        monthly_reset_at: nextMonthStartIso(),
-      })
-      .select("id, plan, monthly_analyses_used, monthly_reset_at")
-      .single();
-    profile = insert.data;
-  }
-
-  if (!profile) return null;
-
-  if (new Date(profile.monthly_reset_at).getTime() <= Date.now()) {
-    const reset = await supabase
-      .from("profiles")
-      .update({
-        monthly_analyses_used: 0,
-        monthly_reset_at: nextMonthStartIso(),
-      })
-      .eq("id", user.id)
-      .select("id, plan, monthly_analyses_used, monthly_reset_at")
-      .single();
-    profile = reset.data || profile;
-  }
-
-  return profile;
-}
-
-function planLimit(plan: string | null | undefined) {
-  if (plan === "pro" || plan === "family") return null;
-  return freeMonthlyLimit;
-}
-
-function nextMonthStartIso() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
 }
 
 function extractVideoId(text: string) {

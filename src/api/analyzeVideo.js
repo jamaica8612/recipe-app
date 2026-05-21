@@ -196,9 +196,6 @@ async function analyzeViaMock({ url, videoId }) {
       source: 'mock',
       reason,
       analysis: partial,
-      quota: {
-        remaining: 12,
-      },
     });
   }
 
@@ -207,10 +204,7 @@ async function analyzeViaMock({ url, videoId }) {
     source: 'mock',
     analysis: makeMockAnalysis(videoId),
     failure: null,
-    quota: {
-      charged: false,
-      remaining: 12,
-    },
+    quota: EMPTY_QUOTA,
   };
 }
 

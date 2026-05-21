@@ -55,12 +55,6 @@ function sourceLabel(source) {
   return 'Gemini 결과';
 }
 
-function quotaNote(quota) {
-  if (!quota || quota.remaining == null) return '';
-  const prefix = quota.charged ? '이번 분석 1회 기록' : '사용량 기록 없음';
-  return `${prefix} · 비용 보호 한도 ${quota.remaining}회 남음`;
-}
-
 function readRecipeFromForm(form, draft) {
   const analysis = draft.response.analysis || {};
   const memberIds = Array.from(form.querySelectorAll('input[name="memberIds"]:checked'))
@@ -145,7 +139,6 @@ export function renderPreview(draftId) {
     draft.videoId &&
     !draft.videoId.startsWith('fake-') &&
     response.source !== 'manual';
-  const quotaMessage = quotaNote(response.quota);
   const categoryOptions = categories.map((category) => html`
     <option value="${category.id}" ${category.id === selectedCategoryId ? raw('selected') : ''}>
       ${category.icon} ${category.name}
@@ -177,7 +170,7 @@ export function renderPreview(draftId) {
       ${failure ? raw(`
         <div class="callout callout--danger">
           <span class="icon">⚠</span>
-          <div><strong>카운트 차감 없음</strong><br>${failure.message} 필요한 내용만 보정해서 저장할 수 있습니다.</div>
+          <div><strong>보정 모드</strong><br>${failure.message} 필요한 내용만 보정해서 저장할 수 있습니다.</div>
         </div>
       `) : raw(`
         <div class="callout callout--olive">
@@ -185,9 +178,6 @@ export function renderPreview(draftId) {
           <div><strong>분석 완료</strong><br>${response.source} 결과입니다. 저장 전 내용을 확인하고 고쳐주세요.</div>
         </div>
       `)}
-      ${quotaMessage ? raw(`
-        <div class="field-help">${quotaMessage}</div>
-      `) : ''}
       ${raw(reviewNote)}
       ${canReportAnalysis ? raw(`
         <button class="btn btn--secondary btn--block" type="button" data-action="report-analysis">

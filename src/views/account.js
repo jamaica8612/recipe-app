@@ -5,12 +5,10 @@ import { getState } from '../store.js';
 import { backupLocalDataToSupabase, loadSupabaseDataIntoLocalState } from '../api/syncSupabase.js';
 
 let currentUser = null;
-let currentProfile = null;
 
 export async function renderAccount() {
   const config = getSupabaseConfig();
   currentUser = await getCurrentUserSafe();
-  currentProfile = currentUser ? await getCurrentProfileSafe() : null;
 
   return {
     header: html`
@@ -56,7 +54,6 @@ function signedInBody(config) {
     <div class="facts">
       <div class="fact"><span class="key">Project</span><span>${config.url}</span></div>
       <div class="fact"><span class="key">User ID</span><span>${currentUser.id}</span></div>
-      <div class="fact"><span class="key">분석 안전 한도</span><span>${formatUsage(currentProfile)}</span></div>
     </div>
     <button class="btn btn--primary btn--block" data-action="backup-local" type="button">로컬 데이터 Supabase에 백업</button>
     <button class="btn btn--secondary btn--block" data-action="restore-remote" type="button">Supabase에서 불러오기</button>
@@ -143,25 +140,4 @@ async function getCurrentUserSafe() {
   } catch {
     return null;
   }
-}
-
-async function getCurrentProfileSafe() {
-  try {
-    const { data } = await getSupabaseClient()
-      .from('profiles')
-      .select('monthly_analyses_used,monthly_reset_at')
-      .single();
-    return data || null;
-  } catch {
-    return null;
-  }
-}
-
-function formatUsage(profile) {
-  if (!profile) return '0 / 20 · 비용 보호용';
-  const used = Number(profile.monthly_analyses_used) || 0;
-  const reset = profile.monthly_reset_at
-    ? ` · ${new Date(profile.monthly_reset_at).toLocaleDateString('ko-KR')} 초기화`
-    : '';
-  return `${used} / 20 · 비용 보호용${reset}`;
 }
