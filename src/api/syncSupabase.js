@@ -29,11 +29,13 @@ export async function backupLocalDataToSupabase() {
   const categoryMap = await loadCategoryMap(supabase);
   const memberMap = await upsertMembers(supabase, userId, state.members);
   const recipeCount = await upsertRecipes(supabase, userId, state.recipes, categoryMap, memberMap);
+  const fridgeCount = await upsertFridgeItems(supabase, userId, state.fridgeItems || []);
   await pruneRemoteSnapshot(supabase, userId, state);
 
   return {
     members: memberMap.size,
     recipes: recipeCount,
+    fridgeItems: fridgeCount,
   };
 }
 
@@ -157,6 +159,34 @@ export async function deleteCategoryFromSupabase(category) {
   return { skipped: false };
 }
 
+export async function syncFridgeItemToSupabase(item) {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return { skipped: true, reason: 'not_signed_in' };
+  }
+
+  const result = await upsertFridgeItems(supabase, userData.user.id, [item]);
+  return { skipped: false, fridgeItems: result };
+}
+
+export async function deleteFridgeItemFromSupabase(localItemId) {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return { skipped: true, reason: 'not_signed_in' };
+  }
+
+  const { error } = await supabase
+    .from('fridge_items')
+    .delete()
+    .eq('user_id', userData.user.id)
+    .eq('source_local_id', localItemId);
+  if (error) throw error;
+
+  return { skipped: false };
+}
+
 export async function loadSupabaseDataIntoLocalState() {
   const supabase = getSupabaseClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -164,7 +194,7 @@ export async function loadSupabaseDataIntoLocalState() {
     throw new Error('로그인이 필요합니다.');
   }
 
-  const [categoryResult, memberResult, recipeResult] = await Promise.all([
+  const [categoryResult, memberResult, recipeResult, fridgeResult] = await Promise.all([
     supabase.from('categories').select('id,name,icon,is_default'),
     supabase
       .from('members')
@@ -178,6 +208,8 @@ export async function loadSupabaseDataIntoLocalState() {
         source_local_id,
         video_id,
         title,
+        channel_name,
+        situation_tag_ids,
         category_id,
         servings,
         cook_time_min,
@@ -190,11 +222,17 @@ export async function loadSupabaseDataIntoLocalState() {
       `)
       .eq('user_id', userData.user.id)
       .order('created_at', { ascending: false }),
+    supabase
+      .from('fridge_items')
+      .select('id,source_local_id,name,checked,created_at')
+      .eq('user_id', userData.user.id)
+      .order('created_at', { ascending: true }),
   ]);
 
   if (categoryResult.error) throw categoryResult.error;
   if (memberResult.error) throw memberResult.error;
   if (recipeResult.error) throw recipeResult.error;
+  if (fridgeResult.error) throw fridgeResult.error;
 
   const categoryByRemoteId = new Map();
   const loadedCategories = [...CATEGORIES];
@@ -230,6 +268,8 @@ export async function loadSupabaseDataIntoLocalState() {
     return {
       id: recipe.source_local_id || `remote-recipe-${recipe.id}`,
       title: recipe.title,
+      channelName: recipe.channel_name || '',
+      situationTagIds: Array.isArray(recipe.situation_tag_ids) ? recipe.situation_tag_ids : [],
       sub: recipe.video_id ? 'YouTube 분석 저장본' : 'Supabase 저장본',
       categoryId: remoteCategoryToLocalId(category),
       cookTimeMin: Number(recipe.cook_time_min) || 0,
@@ -259,11 +299,18 @@ export async function loadSupabaseDataIntoLocalState() {
     members,
     recipes,
     categories: loadedCategories,
+    fridgeItems: (fridgeResult.data || []).map((item) => ({
+      id: item.source_local_id || `remote-fridge-${item.id}`,
+      name: item.name,
+      checked: Boolean(item.checked),
+      remoteId: item.id,
+    })),
   });
 
   return {
     members: members.length,
     recipes: recipes.length,
+    fridgeItems: (fridgeResult.data || []).length,
   };
 }
 
@@ -359,6 +406,12 @@ async function pruneRemoteSnapshot(supabase, userId, state) {
     userId,
     keepIds: new Set((state.members || []).map((member) => member.id)),
   });
+  await pruneRemoteRows({
+    supabase,
+    table: 'fridge_items',
+    userId,
+    keepIds: new Set((state.fridgeItems || []).map((item) => item.id)),
+  });
   await pruneRemoteCategories(supabase, userId, state.categories || []);
 }
 
@@ -422,6 +475,8 @@ async function upsertRecipes(supabase, userId, recipes, categoryMap, memberMap) 
       source_local_id: recipe.id,
       video_id: videoId,
       title: recipe.title,
+      channel_name: recipe.channelName || recipe.chefName || null,
+      situation_tag_ids: Array.isArray(recipe.situationTagIds) ? recipe.situationTagIds : [],
       category_id: categoryMap.get(categoryName) || categoryMap.get('기타') || null,
       servings: Number(recipe.servings) || 1,
       cook_time_min: Number(recipe.cookTimeMin) || 0,
@@ -438,6 +493,24 @@ async function upsertRecipes(supabase, userId, recipes, categoryMap, memberMap) 
     count += 1;
   }
   return count;
+}
+
+async function upsertFridgeItems(supabase, userId, items) {
+  const rows = (items || [])
+    .filter((item) => item?.id && item?.name)
+    .map((item) => ({
+      user_id: userId,
+      source_local_id: item.id,
+      name: String(item.name || '').trim(),
+      checked: Boolean(item.checked),
+    }));
+  if (!rows.length) return 0;
+
+  const { error } = await supabase
+    .from('fridge_items')
+    .upsert(rows, { onConflict: 'user_id,source_local_id' });
+  if (error) throw error;
+  return rows.length;
 }
 
 async function getLinkableVideoId(supabase, videoId) {

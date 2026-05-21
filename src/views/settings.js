@@ -2,6 +2,7 @@ import { html, raw } from '../util.js';
 import { clearBackendSettings, getBackendSettings, saveBackendSettings } from '../config.js';
 import { addCategory, deleteCategory, getState, updateCategory } from '../store.js';
 import { deleteCategoryFromSupabase, syncCategoryToSupabase } from '../api/syncSupabase.js';
+import { icon } from '../icons.js';
 
 const CATEGORY_ICONS = ['🏷', '🥗', '🍲', '🍱', '🥘', '🥣', '🥪', '🍜', '🌶', '🧁'];
 const DEFAULT_CATEGORY_IDS = new Set(['all', 'korean', 'western', 'japanese', 'chinese', 'dessert', 'etc']);
@@ -27,20 +28,20 @@ export function renderSettings() {
 
   return {
     header: html`
-      <div class="title">⚙ <span>설정</span></div>
+      <div class="title">${raw(icon('settings', 18))}<span>설정</span></div>
       <div style="width:36px"></div>
     `,
     body: html`
       <div class="setting-links">
         <button class="setting-link" type="button" data-action="open-members">
-          <span class="ic">👨‍👩‍👧</span>
+          <span class="ic">${raw(icon('users', 22))}</span>
           <span class="lbl"><strong>가족 구성원</strong><small>이름·이모지·색상·알러지</small></span>
-          <span class="chev">›</span>
+          <span class="chev">${raw(icon('chev-r', 18))}</span>
         </button>
         <button class="setting-link" type="button" data-action="open-account">
-          <span class="ic">👤</span>
+          <span class="ic">${raw(icon('user', 22))}</span>
           <span class="lbl"><strong>계정</strong><small>로그인·백업·로그아웃</small></span>
-          <span class="chev">›</span>
+          <span class="chev">${raw(icon('chev-r', 18))}</span>
         </button>
       </div>
 

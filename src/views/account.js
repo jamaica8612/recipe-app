@@ -56,8 +56,7 @@ function signedInBody(config) {
     <div class="facts">
       <div class="fact"><span class="key">Project</span><span>${config.url}</span></div>
       <div class="fact"><span class="key">User ID</span><span>${currentUser.id}</span></div>
-      <div class="fact"><span class="key">Plan</span><span>${currentProfile?.plan || 'free'}</span></div>
-      <div class="fact"><span class="key">분석 사용량</span><span>${formatUsage(currentProfile)}</span></div>
+      <div class="fact"><span class="key">분석 안전 한도</span><span>${formatUsage(currentProfile)}</span></div>
     </div>
     <button class="btn btn--primary btn--block" data-action="backup-local" type="button">로컬 데이터 Supabase에 백업</button>
     <button class="btn btn--secondary btn--block" data-action="restore-remote" type="button">Supabase에서 불러오기</button>
@@ -80,7 +79,7 @@ export function bindAccount(rootEl, navigate) {
       if (status) status.textContent = '백업 중...';
       try {
         const result = await backupLocalDataToSupabase();
-        if (status) status.textContent = `백업 완료: 구성원 ${result.members}명, 레시피 ${result.recipes}개`;
+        if (status) status.textContent = `백업 완료: 구성원 ${result.members}명, 레시피 ${result.recipes}개, 냉장고 ${result.fridgeItems || 0}개`;
       } catch (err) {
         if (status) status.textContent = err.message || '백업에 실패했습니다.';
       } finally {
@@ -89,14 +88,16 @@ export function bindAccount(rootEl, navigate) {
     }
     if (target?.dataset.action === 'restore-remote') {
       const state = getState();
-      const hasLocalData = (state.recipes || []).length > 0 || (state.members || []).length > 0;
+      const hasLocalData = (state.recipes || []).length > 0
+        || (state.members || []).length > 0
+        || (state.fridgeItems || []).length > 0;
       if (hasLocalData && !confirm('현재 로컬 데이터를 Supabase 데이터로 교체할까요?')) return;
       const status = rootEl.querySelector('#backup-status');
       target.disabled = true;
       if (status) status.textContent = '불러오는 중...';
       try {
         const result = await loadSupabaseDataIntoLocalState();
-        if (status) status.textContent = `불러오기 완료: 구성원 ${result.members}명, 레시피 ${result.recipes}개`;
+        if (status) status.textContent = `불러오기 완료: 구성원 ${result.members}명, 레시피 ${result.recipes}개, 냉장고 ${result.fridgeItems || 0}개`;
       } catch (err) {
         if (status) status.textContent = err.message || '불러오기에 실패했습니다.';
       } finally {
@@ -148,7 +149,7 @@ async function getCurrentProfileSafe() {
   try {
     const { data } = await getSupabaseClient()
       .from('profiles')
-      .select('plan,monthly_analyses_used,monthly_reset_at')
+      .select('monthly_analyses_used,monthly_reset_at')
       .single();
     return data || null;
   } catch {
@@ -157,11 +158,10 @@ async function getCurrentProfileSafe() {
 }
 
 function formatUsage(profile) {
-  if (!profile) return '0 / 20';
+  if (!profile) return '0 / 20 · 비용 보호용';
   const used = Number(profile.monthly_analyses_used) || 0;
-  const limit = profile.plan === 'pro' || profile.plan === 'family' ? '무제한' : '20';
   const reset = profile.monthly_reset_at
     ? ` · ${new Date(profile.monthly_reset_at).toLocaleDateString('ko-KR')} 초기화`
     : '';
-  return `${used} / ${limit}${reset}`;
+  return `${used} / 20 · 비용 보호용${reset}`;
 }

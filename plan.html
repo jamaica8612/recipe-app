@@ -365,18 +365,18 @@
       <h2 class="numbered"><span class="num">06</span>분석 실패 폴백</h2>
       <div class="h2-sub">자막 없는 영상·요리가 아닌 영상도 우아하게</div>
 
-      <p>v0.4에서 정립한 폴백 정책 그대로 유지. 코드도 이미 구현되어 동작 검증됨. v0.5에서 한 가지 단순화: <strong>카운트 차감 자체가 사라짐</strong>(요금제 폐기). 실패 시 "다시 시도하세요" 또는 "보정 모드로 진행"만 안내.</p>
+      <p>v0.4에서 정립한 폴백 정책 그대로 유지. 코드도 이미 구현되어 동작 검증됨. v0.5에서는 <strong>요금제 개념은 제거</strong>하되, Gemini 비용 폭주를 막기 위한 <strong>월간 안전 한도 카운터</strong>만 남긴다. 실패·캐시·목업 결과는 한도에서 차감하지 않고, 실패 시 "다시 시도하세요" 또는 "보정 모드로 진행"만 안내.</p>
 
       <h3>실패 케이스 분류 (요금제 제거 후)</h3>
       <table class="token-table">
         <thead><tr><th>케이스</th><th>탐지</th><th>대응</th></tr></thead>
         <tbody>
           <tr><td>요리 영상 아님</td><td><code>is_recipe: false</code></td><td>"요리 영상이 아닙니다" 안내</td></tr>
-          <tr><td>자막·음성 부족</td><td>confidence &lt; 0.5</td><td>2.5-pro → 2.0-flash 캐스케이드 폴백 + 부분 결과 + 보정 모드</td></tr>
+          <tr><td>자막·음성 부족</td><td>confidence &lt; 0.5</td><td>2.5-flash → 2.5-flash-lite → 2.5-pro 캐스케이드 폴백 + 부분 결과 + 보정 모드</td></tr>
           <tr><td>스키마 파싱 실패</td><td>JSON 검증 실패</td><td>1회 재시도, 그래도 실패면 보정 모드</td></tr>
           <tr><td>영상 비공개·삭제</td><td>YouTube 메타 실패</td><td>즉시 안내</td></tr>
           <tr><td>너무 긴 영상 (&gt;1h)</td><td>분석 전 길이 체크</td><td>경고 후 사용자가 선택</td></tr>
-          <tr><td>503/429 일시 부하</td><td>Google 측 capacity</td><td>1.2초 백오프 + 1회 재시도 + 2.0-flash 폴백 <span class="tag-new">v0.4.1</span></td></tr>
+          <tr><td>503/429 일시 부하</td><td>Google 측 capacity</td><td>1.2초 백오프 + 1회 재시도 + 2.5-flash-lite 폴백 <span class="tag-new">v0.4.1</span></td></tr>
         </tbody>
       </table>
     </section>
@@ -461,7 +461,7 @@ function extractMedia(text) {
       <h2 class="numbered"><span class="num">10</span>Gemini 연동</h2>
       <div class="h2-sub">캐스케이드 폴백 + 영양·비용 프롬프트 추가</div>
       <ul>
-        <li><strong>캐스케이드</strong>: <code>gemini-2.5-flash</code> → <code>gemini-2.5-pro</code> → <code>gemini-2.0-flash</code> (각 단계마다 503/429 1.2초 재시도) <span class="tag-new">v0.4.1 적용 완료</span></li>
+        <li><strong>캐스케이드</strong>: <code>gemini-2.5-flash</code> → <code>gemini-2.5-flash-lite</code> → <code>gemini-2.5-pro</code> (각 단계마다 503/429 1.2초 재시도) <span class="tag-new">v0.4.1 적용 완료</span></li>
         <li><strong>출력 스키마 확장</strong>: 칼로리·영양·예상 비용 필드 추가</li>
         <li><strong>호출 경로</strong>: 클라이언트 → Supabase Edge Function → Gemini API (그대로)</li>
         <li><strong>캐싱</strong>: <code>video_analyses</code> 그대로. 초대된 친구들 사이에서만 공유.</li>
@@ -471,7 +471,8 @@ function extractMedia(text) {
   "confidence": "number (0~1)",
   "title": "string",
   "suggested_category": "한식 | 양식 | 일식 | 중식 | 디저트 | 기타",
-  "situation_tags": ["홈파티" | "혼밥" | "도시락" | ...],
+  "channelName": "YouTube 채널명",
+  "situationTagIds": ["party" | "solo" | "lunchbox" | ...],
   "servings": "number",
   "cookTimeMin": "number",
   "ingredients": [{ "name": "string", "amount": "number", "unit": "string" }],
@@ -555,7 +556,7 @@ function extractMedia(text) {
           <ul>
             <li><code>households</code> 마이그레이션 (user_id → household_id 일괄 이전)</li>
             <li><code>invites</code> 테이블 + 본인 admin 화면</li>
-            <li>요금제·신고 코드 제거 (DB 컬럼 + UI)</li>
+            <li>요금제 UI 제거 + 월간 안전 한도 카운터 유지</li>
             <li>일일 글로벌 cap (Edge Function)</li>
             <li>친구 1~2명 초대해서 격리 검증</li>
           </ul>

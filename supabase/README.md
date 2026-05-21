@@ -50,7 +50,7 @@ Expected client response shape:
 
 The function supports cache lookup, failure logging, CORS, request validation, monthly quota checks, Gemini REST integration, and deterministic mock fallback. With `GEMINI_API_KEY` set, it calls Gemini REST `generateContent` using the YouTube URL as `file_data.file_uri`, requests JSON with `generationConfig.responseMimeType` and `responseJsonSchema`, then stores successful responses in `video_analyses`. Without `GEMINI_API_KEY`, it falls back to a deterministic mock response so the frontend contract remains testable.
 
-For signed-in users, only successful new Gemini analyses increment `profiles.monthly_analyses_used`. Cache hits, validation failures, mock failures, and Gemini/API failures do not count. The default free monthly limit is `20`; override it with the `FREE_MONTHLY_ANALYSES` Edge Function environment variable.
+For signed-in users, only successful new Gemini analyses increment `profiles.monthly_analyses_used`. Cache hits, validation failures, mock failures, and Gemini/API failures do not count. The default monthly safety limit is `20`; override it with the `FREE_MONTHLY_ANALYSES` Edge Function environment variable.
 
 The same function also accepts quality events for shared analysis cache rows:
 

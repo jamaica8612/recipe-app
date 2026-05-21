@@ -1,7 +1,7 @@
 // 매우 단순한 서비스 워커 — 정적 자산을 캐시 우선 전략(stale-while-revalidate)으로 제공.
 // 네트워크 요청(Supabase 등)은 그대로 통과.
 
-const CACHE = 'recipe-app-v1';
+const CACHE = 'recipe-app-v2';
 const STATIC_ASSETS = [
   './app.html',
   './styles.css',
@@ -15,13 +15,17 @@ const STATIC_ASSETS = [
   './src/data.js',
   './src/config.js',
   './src/supabaseClient.js',
+  './src/icons.js',
   './src/api/analyzeVideo.js',
   './src/api/syncSupabase.js',
   './src/views/home.js',
   './src/views/analyze.js',
   './src/views/preview.js',
   './src/views/detail.js',
+  './src/views/cook.js',
   './src/views/editRecipe.js',
+  './src/views/search.js',
+  './src/views/fridge.js',
   './src/views/members.js',
   './src/views/settings.js',
   './src/views/account.js',
@@ -53,15 +57,23 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== location.origin) return;
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const fetched = fetch(request).then((response) => {
+    fetch(request).then((response) => {
+      if (response && response.status === 200 && response.type === 'basic') {
+        const clone = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
+      }
+      return response;
+    }).catch(() =>
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
         if (response && response.status === 200 && response.type === 'basic') {
           const clone = response.clone();
           caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
         }
         return response;
-      }).catch(() => cached);
-      return cached || fetched;
-    })
+        });
+      })
+    )
   );
 });

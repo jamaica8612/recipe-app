@@ -1,7 +1,8 @@
-// 검색 — 제목·재료·팁·셰프·태그 통합 검색
+// 검색 — 제목·재료·팁·채널·태그 통합 검색
 import { html, raw, ytThumbnail } from '../util.js';
 import { getState, setSearchQuery } from '../store.js';
 import { SITUATION_TAGS } from '../data.js';
+import { icon } from '../icons.js';
 
 function recipeMatches(recipe, query) {
   const q = query.trim().toLowerCase();
@@ -9,7 +10,7 @@ function recipeMatches(recipe, query) {
   const fields = [
     recipe.title,
     recipe.sub,
-    recipe.chefName,
+    recipe.channelName || recipe.chefName,
     ...(recipe.ingredients || []).map((i) => i.name),
     ...(recipe.steps || []).map((s) => s.text),
     ...(recipe.tips || []),
@@ -34,7 +35,7 @@ export function renderSearch() {
         <div class="thumb" style="${raw(thumbStyle)}"></div>
         <div class="meta">
           <div class="title">${r.title}</div>
-          <div class="sub">${cat?.name || ''} · ${r.cookTimeMin}분${r.chefName ? ` · ${r.chefName}` : ''}</div>
+          <div class="sub">${cat?.name || ''} · ${r.cookTimeMin}분${getChannelName(r) ? ` · ${getChannelName(r)}` : ''}</div>
         </div>
       </div>
     `;
@@ -45,7 +46,7 @@ export function renderSearch() {
         <div class="empty">
           <span class="emo">🔍</span>
           <div class="ttl">레시피 검색</div>
-          <div>제목·재료·팁·셰프·태그까지 한 번에</div>
+          <div>제목·재료·팁·채널·태그까지 한 번에</div>
         </div>
       `
     : matched.length === 0
@@ -63,13 +64,13 @@ export function renderSearch() {
 
   return {
     header: html`
-      <div class="title">🔍 <span>검색</span></div>
+      <div class="title">${raw(icon('search', 18))}<span>검색</span></div>
       <div style="width:36px"></div>
     `,
     body: html`
       <label class="field" style="margin-bottom:14px;">
         <input class="input" id="search-input" value="${q}" autofocus
-               placeholder="레시피, 재료, 팁, 셰프, 태그…" />
+               placeholder="레시피, 재료, 팁, 채널, 태그…" />
       </label>
       ${raw(body)}
     `,
@@ -77,6 +78,10 @@ export function renderSearch() {
     showNav: true,
     activeNav: 'search',
   };
+}
+
+function getChannelName(recipe) {
+  return String(recipe.channelName || recipe.chefName || '').trim();
 }
 
 export function bindSearch(rootEl, navigate) {

@@ -20,6 +20,7 @@ function makeMockAnalysis(videoId) {
   return {
     youtubeVideoId: videoId,
     title: '새 레시피 (목업 분석)',
+    channelName: '목업 채널',
     suggestedCategory: 'etc',
     confidence: 0.82,
     needsReview: false,
@@ -154,9 +155,17 @@ function normalizeAnalyzeResponse(data, fallbackSource) {
   return {
     ok: true,
     source,
-    analysis: data.analysis,
+    analysis: normalizeAnalysis(data.analysis),
     failure: null,
     quota: data.quota || EMPTY_QUOTA,
+  };
+}
+
+function normalizeAnalysis(analysis) {
+  return {
+    ...analysis,
+    channelName: analysis.channelName || analysis.chefName || '',
+    situationTagIds: Array.isArray(analysis.situationTagIds) ? analysis.situationTagIds : [],
   };
 }
 

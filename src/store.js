@@ -28,6 +28,7 @@ function defaultState() {
     recipes:    [...RECIPES],
     members:    [...MEMBERS],
     categories: [...CATEGORIES],
+    fridgeItems: [],
     analysisDrafts: [],
     filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
   };
@@ -43,6 +44,7 @@ function normalizeState(value) {
     recipes: Array.isArray(value.recipes) ? value.recipes : base.recipes,
     members: Array.isArray(value.members) ? value.members : base.members,
     categories: normalizeCategories(value.categories, base.categories),
+    fridgeItems: normalizeFridgeItems(value.fridgeItems),
     analysisDrafts: Array.isArray(value.analysisDrafts) ? value.analysisDrafts : [],
     filter: {
       ...base.filter,
@@ -55,6 +57,17 @@ function normalizeCategories(categories, fallback) {
   if (!Array.isArray(categories) || categories.length === 0) return fallback;
   const hasAll = categories.some((category) => category.id === 'all');
   return hasAll ? categories : [fallback[0], ...categories];
+}
+
+function normalizeFridgeItems(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => ({
+      id: item?.id || `fi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: String(item?.name || '').trim(),
+      checked: Boolean(item?.checked),
+    }))
+    .filter((item) => item.name);
 }
 
 const initial = loadFromStorage() || defaultState();
@@ -197,12 +210,44 @@ export function deleteMember(id) {
   }));
 }
 
-export function replaceLibrary({ members, recipes, categories }) {
+export function addFridgeItem(name) {
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+
+  const exists = state.fridgeItems.some((item) => item.name.toLowerCase() === clean.toLowerCase());
+  if (exists) return null;
+
+  const id = 'fi' + (Date.now() % 1e8).toString(36);
+  set((s) => ({
+    ...s,
+    fridgeItems: [...(s.fridgeItems || []), { id, name: clean, checked: true }],
+  }));
+  return id;
+}
+
+export function toggleFridgeItem(id) {
+  set((s) => ({
+    ...s,
+    fridgeItems: (s.fridgeItems || []).map((item) =>
+      item.id === id ? { ...item, checked: !item.checked } : item,
+    ),
+  }));
+}
+
+export function deleteFridgeItem(id) {
+  set((s) => ({
+    ...s,
+    fridgeItems: (s.fridgeItems || []).filter((item) => item.id !== id),
+  }));
+}
+
+export function replaceLibrary({ members, recipes, categories, fridgeItems }) {
   set((s) => ({
     ...s,
     members: members || [],
     recipes: recipes || [],
     categories: categories || s.categories,
+    fridgeItems: Array.isArray(fridgeItems) ? fridgeItems : (s.fridgeItems || []),
     filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
   }));
 }
@@ -237,6 +282,8 @@ function recipeMatchesQuery(recipe, query) {
   const fields = [
     recipe.title,
     recipe.sub,
+    recipe.channelName,
+    recipe.chefName,
     ...(recipe.ingredients || []).map((item) => item.name),
     ...(recipe.steps || []).map((step) => step.text),
     ...(recipe.tips || []),
