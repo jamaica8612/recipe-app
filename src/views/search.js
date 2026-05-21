@@ -1,7 +1,6 @@
 // 검색 — 제목·재료·팁·채널·태그 통합 검색
 import { html, raw, ytThumbnail } from '../util.js';
 import { getState, setSearchQuery } from '../store.js';
-import { SITUATION_TAGS } from '../data.js';
 import { icon } from '../icons.js';
 import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from '../ingredientMatch.js';
 
@@ -16,9 +15,6 @@ function recipeMatches(recipe, query) {
     ...(recipe.ingredients || []).map((i) => i.name),
     ...(recipe.steps || []).map((s) => s.text),
     ...(recipe.tips || []),
-    ...((recipe.situationTagIds || [])
-      .map((id) => SITUATION_TAGS.find((t) => t.id === id)?.name)
-      .filter(Boolean)),
   ];
   if (fields.some((v) => normalizeSearchText(v).includes(q))) return true;
   return (recipe.ingredients || []).some((item) =>

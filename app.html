@@ -545,65 +545,6 @@
       max-width: 320px;
       text-wrap: pretty;
     }
-    .cook-timer {
-      margin-top: 24px;
-      background: var(--c-surface);
-      border: 1px solid var(--c-line);
-      border-radius: var(--r-lg);
-      padding: 14px 18px 16px;
-      display: inline-flex;
-      flex-direction: column;
-      align-items: center;
-      box-shadow: var(--e-1);
-      min-width: 230px;
-    }
-    .cook-timer-label {
-      font-family: var(--f-mono);
-      font-size: var(--t-2xs);
-      letter-spacing: .12em;
-      text-transform: uppercase;
-      color: var(--c-olive);
-      margin-bottom: 4px;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .cook-digits {
-      font-family: var(--f-mono);
-      font-weight: 500;
-      font-size: 3rem;
-      letter-spacing: .02em;
-      color: var(--c-ink);
-      line-height: 1;
-    }
-    .cook-timer-actions, .cook-timer-presets {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content: center;
-      margin-top: 10px;
-    }
-    .cook-timer-actions button, .cook-timer-presets button {
-      border: 1px solid var(--c-line);
-      background: var(--c-surface-2);
-      color: var(--c-ink-2);
-      border-radius: var(--r-full);
-      min-height: 34px;
-      padding: 7px 11px;
-      font-family: var(--f-sans);
-      font-size: var(--t-xs);
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .cook-timer-actions button:first-child {
-      background: var(--c-terra);
-      color: #fff;
-      border-color: var(--c-terra);
-    }
-    .cook-screen.is-timer-done .cook-timer {
-      border-color: var(--c-terra);
-      box-shadow: 0 0 0 4px rgba(178,69,44,.12);
-    }
     .cook-link {
       margin-top: 18px;
       display: inline-flex;
@@ -664,7 +605,7 @@
 
     /* Home — view segments + groups */
     .view-seg {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
       padding: 4px; background: var(--c-surface-2);
       border: 1px solid var(--c-line); border-radius: var(--r-full);
       margin-bottom: 18px;
@@ -746,6 +687,31 @@
     .fridge-list {
       display: grid;
       gap: 8px;
+    }
+    .fridge-sort {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+      padding: 4px;
+      border: 1px solid var(--c-line);
+      border-radius: var(--r-full);
+      background: var(--c-surface-2);
+    }
+    .fridge-sort button {
+      min-height: 32px;
+      border: 0;
+      border-radius: var(--r-full);
+      background: transparent;
+      color: var(--c-ink-3);
+      font-size: var(--t-xs);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .fridge-sort button.is-on {
+      background: var(--c-surface);
+      color: var(--c-terra);
+      box-shadow: var(--e-1);
     }
     .fridge-item {
       display: grid;
@@ -922,7 +888,7 @@
     <!-- 뷰가 여기에 렌더링됨 -->
   </div>
 
-  <script type="module" src="src/app.js?v=20260521-fridge-dates-v1"></script>
+  <script type="module" src="src/app.js?v=20260521-simplify-v1"></script>
   <script>
     // PWA 서비스 워커 등록 (오프라인 + 홈화면 추가 가능)
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {

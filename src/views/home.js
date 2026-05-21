@@ -1,11 +1,10 @@
-// 홈 — 4-view 세그먼트로 그룹핑된 레시피 목록
-// viewMode: 'category' | 'member' | 'chef' | 'situation'
+// 홈 — 3-view 세그먼트로 그룹핑된 레시피 목록
+// viewMode: 'category' | 'member' | 'chef'
 import { html, raw, ytThumbnail } from '../util.js';
 import {
   getState, getFilteredRecipes,
   setSearchQuery, toggleFavoriteFilter, toggleFavorite, setViewMode,
 } from '../store.js';
-import { SITUATION_TAGS } from '../data.js';
 import { loadSupabaseDataIntoLocalState, syncRecipeToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
 
@@ -13,7 +12,6 @@ const VIEW_MODES = [
   { id: 'category',  label: '카테고리', iconName: 'tag' },
   { id: 'member',    label: '구성원',   iconName: 'users' },
   { id: 'chef',      label: '채널',     iconName: 'play' },
-  { id: 'situation', label: '상황',     icon: 'tag' },
 ];
 
 const UNGROUPED = '__ungrouped__';
@@ -95,7 +93,6 @@ function groupRecipes(list, viewMode, s) {
   if (viewMode === 'category') return groupByCategory(list, s);
   if (viewMode === 'member')   return groupByMember(list, s);
   if (viewMode === 'chef')     return groupByChef(list);
-  if (viewMode === 'situation')return groupBySituation(list);
   return groupByCategory(list, s);
 }
 
@@ -151,27 +148,6 @@ function groupByChef(list) {
     if (b.key === UNGROUPED) return -1;
     return a.label.localeCompare(b.label, 'ko');
   });
-}
-
-function groupBySituation(list) {
-  const buckets = new Map();
-  for (const t of SITUATION_TAGS) {
-    buckets.set(t.id, { key: t.id, label: t.name, icon: t.icon, recipes: [] });
-  }
-  for (const r of list) {
-    const tags = r.situationTagIds || [];
-    if (tags.length === 0) {
-      if (!buckets.has(UNGROUPED)) {
-        buckets.set(UNGROUPED, { key: UNGROUPED, label: '태그 없음', icon: '❓', recipes: [] });
-      }
-      buckets.get(UNGROUPED).recipes.push(r);
-    } else {
-      for (const tid of tags) {
-        if (buckets.has(tid)) buckets.get(tid).recipes.push(r);
-      }
-    }
-  }
-  return Array.from(buckets.values()).filter((g) => g.recipes.length > 0);
 }
 
 // ──────────────────────────────────────────────────────────

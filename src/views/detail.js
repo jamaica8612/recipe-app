@@ -112,7 +112,7 @@ export function renderDetail(recipeId) {
         </section>
         ${tips ? raw(`<section class="detail-section"><h3>Tip</h3><ul class="tip-list">${tips}</ul></section>`) : ''}
         <section class="detail-section detail-actions">
-          <button class="btn btn--primary btn--lg btn--block" data-action="start-cooking" type="button">${raw(icon('timer', 17))} 조리 모드 시작</button>
+          <button class="btn btn--primary btn--lg btn--block" data-action="start-cooking" type="button">${raw(icon('play', 15))} 조리 모드 시작</button>
           <div class="detail-sub-actions">
             <button class="btn btn--secondary btn--block" data-action="edit-recipe" type="button">${raw(icon('edit', 15))} 수정</button>
             <button class="btn btn--secondary btn--block" data-action="delete-recipe" type="button">${raw(icon('trash', 15))} 삭제</button>

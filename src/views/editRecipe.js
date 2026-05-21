@@ -1,7 +1,6 @@
 import { esc, html, raw, parseLines } from '../util.js';
 import { getState, setFlash, updateRecipe } from '../store.js';
 import { syncRecipeToSupabase } from '../api/syncSupabase.js';
-import { SITUATION_TAGS } from '../data.js';
 
 function ingredientRow(item = {}) {
   return `
@@ -67,15 +66,6 @@ export function renderEditRecipe(recipeId) {
       <span>${member.name}</span>
     </label>
   `).join('');
-  const selectedSituationTags = new Set(recipe.situationTagIds || []);
-  const situationChips = SITUATION_TAGS.map((tag) => html`
-    <label class="check-chip">
-      <input type="checkbox" name="situationTagIds" value="${tag.id}" ${selectedSituationTags.has(tag.id) ? raw('checked') : ''} />
-      <span>${tag.icon}</span>
-      <span>${tag.name}</span>
-    </label>
-  `).join('');
-
   return {
     header: html`
       <button class="back-btn" data-action="back">← 뒤로</button>
@@ -94,11 +84,6 @@ export function renderEditRecipe(recipeId) {
           <span class="field-label">채널</span>
           <input class="input" name="channelName" value="${recipe.channelName || recipe.chefName || ''}" placeholder="예: 백종원 PAIK's CUISINE" />
         </label>
-
-        <div class="field">
-          <span class="field-label">상황 태그</span>
-          <div class="check-chip-row">${raw(situationChips)}</div>
-        </div>
 
         <div class="row">
           <label class="field" style="flex:1 1 120px">
@@ -205,8 +190,6 @@ export function bindEditRecipe(rootEl, navigate, recipeId) {
 function readPatch(form) {
   const memberIds = Array.from(form.querySelectorAll('input[name="memberIds"]:checked'))
     .map((input) => input.value);
-  const situationTagIds = Array.from(form.querySelectorAll('input[name="situationTagIds"]:checked'))
-    .map((input) => input.value);
   const ingredients = Array.from(form.querySelectorAll('[data-kind="ingredient"]'))
     .map((row) => ({
       name: row.querySelector('[name="ingredientName"]').value.trim(),
@@ -229,7 +212,7 @@ function readPatch(form) {
     cookTimeMin: Number(form.cookTimeMin.value) || 0,
     servings: Number(form.servings.value) || 1,
     memberIds,
-    situationTagIds,
+    situationTagIds: [],
     ingredients,
     steps,
     tips: parseLines(form.tips.value),

@@ -2,8 +2,6 @@ import { esc, html, raw, formatTimestamp } from '../util.js';
 import { getState } from '../store.js';
 import { icon } from '../icons.js';
 
-const TIMER_PRESETS = [60, 180, 300, 600];
-let activeTimerId = null;
 let activeWakeLock = null;
 
 export function renderCook(recipeId) {
@@ -35,9 +33,6 @@ export function renderCook(recipeId) {
     const cls = i < index || doneSteps.has(String(i)) ? 'is-done' : i === index ? 'is-on' : '';
     return `<span class="cook-dot ${cls}"></span>`;
   }).join('');
-  const timerPresets = TIMER_PRESETS.map((seconds) => html`
-    <button type="button" data-action="timer-set" data-seconds="${seconds}">${formatTimer(seconds)}</button>
-  `).join('');
   const videoLink = recipe.videoId && !recipe.videoId.startsWith('fake-')
     ? `https://www.youtube.com/watch?v=${encodeURIComponent(recipe.videoId)}&t=${Math.max(0, Number(step.timestampSec) || 0)}s`
     : '';
@@ -49,12 +44,10 @@ export function renderCook(recipeId) {
       <span class="cook-keepawake"><span class="led"></span> 화면 켜둠</span>
     `,
     body: html`
-      <section class="cook-screen"
+        <section class="cook-screen"
         data-recipe-id="${recipe.id}"
         data-step-index="${index}"
-        data-total-steps="${steps.length}"
-        data-timer-left="${state.timerLeft || 0}"
-        data-timer-running="false">
+        data-total-steps="${steps.length}">
         <div class="cook-top">
           <div class="cook-dots">${raw(dots)}</div>
           <span class="cook-count">${index + 1} / ${steps.length}</span>
@@ -64,16 +57,6 @@ export function renderCook(recipeId) {
           <div class="cook-of">단계</div>
           <div class="cook-stepnum">${String(index + 1).padStart(2, '0')}</div>
           <p class="cook-text">${step.text}</p>
-
-          <div class="cook-timer">
-            <span class="cook-timer-label">${raw(icon('timer', 14))} 타이머</span>
-            <span class="cook-digits" data-role="timer-digits">${formatTimer(state.timerLeft || 0)}</span>
-            <div class="cook-timer-actions">
-              <button type="button" data-action="timer-toggle">${state.timerLeft ? '시작' : '타이머 시작'}</button>
-              <button type="button" data-action="timer-reset">초기화</button>
-            </div>
-            <div class="cook-timer-presets">${raw(timerPresets)}</div>
-          </div>
 
           ${videoLink ? raw(`
             <a class="cook-link" href="${esc(videoLink)}" target="_blank" rel="noreferrer">
@@ -101,8 +84,6 @@ export function renderCook(recipeId) {
 }
 
 export function bindCook(rootEl, navigate, recipeId) {
-  clearInterval(activeTimerId);
-  activeTimerId = null;
   requestWakeLock();
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -120,48 +101,7 @@ export function bindCook(rootEl, navigate, recipeId) {
     if (target.dataset.action === 'prev-step') moveStep(rootEl, navigate, recipeId, -1);
     if (target.dataset.action === 'next-step') moveStep(rootEl, navigate, recipeId, 1);
     if (target.dataset.action === 'toggle-done') toggleDone(rootEl, recipeId);
-    if (target.dataset.action === 'timer-set') setTimer(rootEl, recipeId, Number(target.dataset.seconds) || 0);
-    if (target.dataset.action === 'timer-reset') {
-      stopTimer();
-      setTimer(rootEl, recipeId, 0);
-    }
-    if (target.dataset.action === 'timer-toggle') {
-      const running = shell.dataset.timerRunning === 'true';
-      if (running) stopTimer();
-      else startTimer();
-      updateTimerButton(rootEl);
-    }
   });
-
-  function startTimer() {
-    const shell = rootEl.querySelector('.cook-screen');
-    if (!shell) return;
-    if ((Number(shell.dataset.timerLeft) || 0) <= 0) {
-      setTimer(rootEl, recipeId, 300);
-    }
-    shell.dataset.timerRunning = 'true';
-    updateTimerButton(rootEl);
-    clearInterval(activeTimerId);
-    activeTimerId = setInterval(() => {
-      const current = Number(shell.dataset.timerLeft) || 0;
-      const next = Math.max(0, current - 1);
-      shell.dataset.timerLeft = String(next);
-      paintTimer(rootEl, next);
-      saveCookPatch(rootEl, recipeId, { timerLeft: next });
-      if (next <= 0) {
-        stopTimer();
-        shell.classList.add('is-timer-done');
-      }
-    }, 1000);
-  }
-
-  function stopTimer() {
-    clearInterval(activeTimerId);
-    activeTimerId = null;
-    const shell = rootEl.querySelector('.cook-screen');
-    if (shell) shell.dataset.timerRunning = 'false';
-    updateTimerButton(rootEl);
-  }
 
   function handleVisibilityChange() {
     if (document.visibilityState === 'visible') requestWakeLock();
@@ -205,27 +145,6 @@ function toggleDone(rootEl, recipeId) {
   location.hash = `#/cook/${recipeId}`;
 }
 
-function setTimer(rootEl, recipeId, seconds) {
-  const shell = rootEl.querySelector('.cook-screen');
-  if (!shell) return;
-  shell.classList.remove('is-timer-done');
-  shell.dataset.timerLeft = String(Math.max(0, seconds));
-  paintTimer(rootEl, seconds);
-  saveCookPatch(rootEl, recipeId, { timerLeft: Math.max(0, seconds) });
-}
-
-function paintTimer(rootEl, seconds) {
-  const node = rootEl.querySelector('[data-role="timer-digits"]');
-  if (node) node.textContent = formatTimer(seconds);
-}
-
-function updateTimerButton(rootEl) {
-  const shell = rootEl.querySelector('.cook-screen');
-  const button = rootEl.querySelector('[data-action="timer-toggle"]');
-  if (!shell || !button) return;
-  button.textContent = shell.dataset.timerRunning === 'true' ? '일시정지' : '시작';
-}
-
 function key(recipeId) {
   return `recipe-app:cook:${recipeId}`;
 }
@@ -236,10 +155,9 @@ function loadCookState(recipeId, totalSteps) {
     return {
       index: Math.max(0, Math.min(totalSteps - 1, Number(saved.index) || 0)),
       doneSteps: Array.isArray(saved.doneSteps) ? saved.doneSteps : [],
-      timerLeft: Math.max(0, Number(saved.timerLeft) || 0),
     };
   } catch {
-    return { index: 0, doneSteps: [], timerLeft: 0 };
+    return { index: 0, doneSteps: [] };
   }
 }
 
@@ -251,11 +169,4 @@ function saveCookPatch(rootEl, recipeId, patch) {
   } catch {
     /* ignore */
   }
-}
-
-function formatTimer(seconds) {
-  const total = Math.max(0, Number(seconds) || 0);
-  const m = Math.floor(total / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return `${String(m).padStart(2, '0')}:${s}`;
 }

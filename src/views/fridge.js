@@ -5,6 +5,7 @@ import {
   deleteFridgeItem,
   getState,
   setFridgeFocusItem,
+  setFridgeSort,
   toggleFridgeItem,
 } from '../store.js';
 import { deleteFridgeItemFromSupabase, syncFridgeItemToSupabase } from '../api/syncSupabase.js';
@@ -14,6 +15,7 @@ import { hasFuzzyOverlap, makeIngredientTerms } from '../ingredientMatch.js';
 export function renderFridge() {
   const s = getState();
   const items = s.fridgeItems || [];
+  const fridgeSort = s.filter.fridgeSort || 'expiry';
   const focusedItem = items.find((item) => item.id === s.filter.fridgeFocusId);
   const activeItems = focusedItem ? [focusedItem] : items.filter((item) => item.checked);
   const matches = rankRecipesByFridge(s.recipes || [], activeItems);
@@ -49,7 +51,11 @@ export function renderFridge() {
             <p class="section-note">${urgentCount ? `임박/만료 ${urgentCount}개 먼저 확인하세요` : '재료를 누르면 그 재료로 만들 수 있는 레시피를 보여줘요'}</p>
           </div>
         </div>
-        ${raw(renderFridgeItems(items, focusedItem?.id))}
+        <div class="fridge-sort" aria-label="냉장고 정렬">
+          <button type="button" data-action="set-fridge-sort" data-sort="expiry" class="${fridgeSort === 'expiry' ? 'is-on' : ''}">유통기한순</button>
+          <button type="button" data-action="set-fridge-sort" data-sort="name" class="${fridgeSort === 'name' ? 'is-on' : ''}">이름순</button>
+        </div>
+        ${raw(renderFridgeItems(items, focusedItem?.id, fridgeSort))}
       </section>
 
       <section class="fridge-section">
@@ -69,7 +75,7 @@ export function renderFridge() {
   };
 }
 
-function renderFridgeItems(items, focusedId) {
+function renderFridgeItems(items, focusedId, sortMode) {
   if (!items.length) {
     return html`
       <div class="empty mini-empty">
@@ -82,7 +88,7 @@ function renderFridgeItems(items, focusedId) {
 
   return html`
     <div class="fridge-list">
-      ${raw(sortFridgeItems(items).map((item) => renderFridgeItem(item, focusedId)).join(''))}
+      ${raw(sortFridgeItems(items, sortMode).map((item) => renderFridgeItem(item, focusedId)).join(''))}
     </div>
   `;
 }
@@ -244,6 +250,8 @@ export function bindFridge(rootEl, navigate) {
       setFridgeFocusItem(getState().filter.fridgeFocusId === id ? null : id);
     } else if (action === 'clear-fridge-focus') {
       setFridgeFocusItem(null);
+    } else if (action === 'set-fridge-sort') {
+      setFridgeSort(target.dataset.sort);
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
     }
@@ -258,8 +266,9 @@ export function bindFridge(rootEl, navigate) {
   });
 }
 
-function sortFridgeItems(items) {
+function sortFridgeItems(items, sortMode) {
   return [...items].sort((a, b) => {
+    if (sortMode === 'name') return a.name.localeCompare(b.name, 'ko');
     const aState = getExpiryState(a);
     const bState = getExpiryState(b);
     return aState.rank - bState.rank

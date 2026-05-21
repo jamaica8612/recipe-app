@@ -31,7 +31,7 @@ function defaultState() {
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry' },
   };
 }
 
@@ -109,13 +109,17 @@ export function setSearchQuery(query) {
   set((s) => ({ ...s, filter: { ...s.filter, query: String(query || '') } }));
 }
 export function setViewMode(viewMode) {
-  // viewMode: 'category' | 'member' | 'chef' | 'situation'
-  const allowed = ['category', 'member', 'chef', 'situation'];
+  // viewMode: 'category' | 'member' | 'chef'
+  const allowed = ['category', 'member', 'chef'];
   const next = allowed.includes(viewMode) ? viewMode : 'category';
   set((s) => ({ ...s, filter: { ...s.filter, viewMode: next } }));
 }
 export function setFridgeFocusItem(id) {
   set((s) => ({ ...s, filter: { ...s.filter, fridgeFocusId: id || null } }));
+}
+export function setFridgeSort(sort) {
+  const next = sort === 'name' ? 'name' : 'expiry';
+  set((s) => ({ ...s, filter: { ...s.filter, fridgeSort: next } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({

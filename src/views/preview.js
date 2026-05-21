@@ -2,7 +2,6 @@ import { esc, html, raw, parseLines } from '../util.js';
 import { getState, getAnalysisDraft, saveDraftAsRecipe } from '../store.js';
 import { reportAnalysis } from '../api/analyzeVideo.js';
 import { saveRecipeToSupabase } from '../api/syncSupabase.js';
-import { SITUATION_TAGS } from '../data.js';
 
 function ingredientRows(items = []) {
   const rows = items.length ? items : [{ name: '', amount: '', unit: '' }];
@@ -66,8 +65,6 @@ function readRecipeFromForm(form, draft) {
   const analysis = draft.response.analysis || {};
   const memberIds = Array.from(form.querySelectorAll('input[name="memberIds"]:checked'))
     .map((input) => input.value);
-  const situationTagIds = Array.from(form.querySelectorAll('input[name="situationTagIds"]:checked'))
-    .map((input) => input.value);
   const ingredients = Array.from(form.querySelectorAll('[data-kind="ingredient"]'))
     .map((row) => ({
       name: row.querySelector('[name="ingredientName"]').value.trim(),
@@ -99,7 +96,7 @@ function readRecipeFromForm(form, draft) {
     cookTimeMin: Number(form.cookTimeMin.value) || 0,
     servings: Number(form.servings.value) || 1,
     memberIds,
-    situationTagIds,
+    situationTagIds: [],
     videoId: draft.videoId,
     ingredients,
     steps,
@@ -161,14 +158,6 @@ export function renderPreview(draftId) {
       <span>${member.name}</span>
     </label>
   `).join('');
-  const selectedSituationTags = new Set(Array.isArray(analysis.situationTagIds) ? analysis.situationTagIds : []);
-  const situationChips = SITUATION_TAGS.map((tag) => html`
-    <label class="check-chip">
-      <input type="checkbox" name="situationTagIds" value="${tag.id}" ${selectedSituationTags.has(tag.id) ? raw('checked') : ''} />
-      <span>${tag.icon}</span>
-      <span>${tag.name}</span>
-    </label>
-  `).join('');
   const reviewNote = failure || analysis.needsReview || !analysis.ingredients?.length || !analysis.steps?.length
     ? html`
       <div class="callout callout--mustard">
@@ -219,12 +208,6 @@ export function renderPreview(draftId) {
           <input class="input" name="channelName" value="${analysis.channelName || analysis.chefName || ''}" placeholder="예: 백종원 PAIK's CUISINE" />
           <div class="field-help">AI가 읽어온 출처입니다. 저장 전 직접 고칠 수 있어요.</div>
         </label>
-
-        <div class="field">
-          <span class="field-label">상황 태그</span>
-          <div class="check-chip-row">${raw(situationChips)}</div>
-          <div class="field-help">AI 추천 태그입니다. 저장 전 직접 바꿀 수 있어요.</div>
-        </div>
 
         <div class="row">
           <label class="field" style="flex:1 1 120px">
