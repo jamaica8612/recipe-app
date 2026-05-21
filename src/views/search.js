@@ -3,10 +3,12 @@ import { html, raw, ytThumbnail } from '../util.js';
 import { getState, setSearchQuery } from '../store.js';
 import { SITUATION_TAGS } from '../data.js';
 import { icon } from '../icons.js';
+import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from '../ingredientMatch.js';
 
 function recipeMatches(recipe, query) {
-  const q = query.trim().toLowerCase();
+  const q = normalizeSearchText(query);
   if (!q) return true;
+  const queryTerms = makeIngredientTerms(query);
   const fields = [
     recipe.title,
     recipe.sub,
@@ -18,7 +20,10 @@ function recipeMatches(recipe, query) {
       .map((id) => SITUATION_TAGS.find((t) => t.id === id)?.name)
       .filter(Boolean)),
   ];
-  return fields.some((v) => String(v || '').toLowerCase().includes(q));
+  if (fields.some((v) => normalizeSearchText(v).includes(q))) return true;
+  return (recipe.ingredients || []).some((item) =>
+    hasFuzzyOverlap(makeIngredientTerms(item.name).terms, queryTerms.terms),
+  );
 }
 
 export function renderSearch() {
@@ -86,8 +91,21 @@ function getChannelName(recipe) {
 
 export function bindSearch(rootEl, navigate) {
   const input = rootEl.querySelector('#search-input');
-  input?.addEventListener('input', (e) => {
+  let composing = false;
+  let timer = null;
+  const commitQuery = (value) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => setSearchQuery(value), 120);
+  };
+  input?.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  input?.addEventListener('compositionend', (e) => {
+    composing = false;
     setSearchQuery(e.target.value);
+  });
+  input?.addEventListener('input', (e) => {
+    if (!composing) commitQuery(e.target.value);
   });
   rootEl.addEventListener('click', (e) => {
     const target = e.target.closest('[data-action]');

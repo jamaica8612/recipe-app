@@ -2,6 +2,7 @@
 // Supabase 연동 시 fetch/insert/update 로직만 이 안에서 바꾸면 됨
 
 import { RECIPES, MEMBERS, CATEGORIES } from './data.js';
+import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from './ingredientMatch.js';
 
 const KEY = 'recipe-app:v1';
 
@@ -30,7 +31,7 @@ function defaultState() {
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null },
   };
 }
 
@@ -66,8 +67,15 @@ function normalizeFridgeItems(items) {
       id: item?.id || `fi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: String(item?.name || '').trim(),
       checked: Boolean(item?.checked),
+      purchasedAt: normalizeDateValue(item?.purchasedAt || item?.purchased_at),
+      expiresAt: normalizeDateValue(item?.expiresAt || item?.expires_at),
     }))
     .filter((item) => item.name);
+}
+
+function normalizeDateValue(value) {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 }
 
 const initial = loadFromStorage() || defaultState();
@@ -105,6 +113,9 @@ export function setViewMode(viewMode) {
   const allowed = ['category', 'member', 'chef', 'situation'];
   const next = allowed.includes(viewMode) ? viewMode : 'category';
   set((s) => ({ ...s, filter: { ...s.filter, viewMode: next } }));
+}
+export function setFridgeFocusItem(id) {
+  set((s) => ({ ...s, filter: { ...s.filter, fridgeFocusId: id || null } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({
@@ -210,8 +221,9 @@ export function deleteMember(id) {
   }));
 }
 
-export function addFridgeItem(name) {
-  const clean = String(name || '').trim();
+export function addFridgeItem(input) {
+  const payload = typeof input === 'object' && input !== null ? input : { name: input };
+  const clean = String(payload.name || '').trim();
   if (!clean) return null;
 
   const exists = state.fridgeItems.some((item) => item.name.toLowerCase() === clean.toLowerCase());
@@ -220,9 +232,32 @@ export function addFridgeItem(name) {
   const id = 'fi' + (Date.now() % 1e8).toString(36);
   set((s) => ({
     ...s,
-    fridgeItems: [...(s.fridgeItems || []), { id, name: clean, checked: true }],
+    fridgeItems: [...(s.fridgeItems || []), {
+      id,
+      name: clean,
+      checked: true,
+      purchasedAt: normalizeDateValue(payload.purchasedAt),
+      expiresAt: normalizeDateValue(payload.expiresAt),
+    }],
   }));
   return id;
+}
+
+export function updateFridgeItem(id, patch) {
+  set((s) => ({
+    ...s,
+    fridgeItems: (s.fridgeItems || []).map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            ...patch,
+            name: patch.name == null ? item.name : String(patch.name || '').trim(),
+            purchasedAt: patch.purchasedAt == null ? item.purchasedAt : normalizeDateValue(patch.purchasedAt),
+            expiresAt: patch.expiresAt == null ? item.expiresAt : normalizeDateValue(patch.expiresAt),
+          }
+        : item,
+    ).filter((item) => item.name),
+  }));
 }
 
 export function toggleFridgeItem(id) {
@@ -238,6 +273,10 @@ export function deleteFridgeItem(id) {
   set((s) => ({
     ...s,
     fridgeItems: (s.fridgeItems || []).filter((item) => item.id !== id),
+    filter: {
+      ...s.filter,
+      fridgeFocusId: s.filter.fridgeFocusId === id ? null : s.filter.fridgeFocusId,
+    },
   }));
 }
 
@@ -279,6 +318,8 @@ export function getFilteredRecipes() {
 }
 
 function recipeMatchesQuery(recipe, query) {
+  const normalizedQuery = normalizeSearchText(query);
+  const queryTerms = makeIngredientTerms(query);
   const fields = [
     recipe.title,
     recipe.sub,
@@ -288,5 +329,10 @@ function recipeMatchesQuery(recipe, query) {
     ...(recipe.steps || []).map((step) => step.text),
     ...(recipe.tips || []),
   ];
-  return fields.some((value) => String(value || '').toLowerCase().includes(query));
+  const textMatch = fields.some((value) => normalizeSearchText(value).includes(normalizedQuery));
+  if (textMatch) return true;
+
+  return (recipe.ingredients || []).some((item) =>
+    hasFuzzyOverlap(makeIngredientTerms(item.name).terms, queryTerms.terms),
+  );
 }

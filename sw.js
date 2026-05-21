@@ -1,7 +1,7 @@
 // 매우 단순한 서비스 워커 — 정적 자산을 캐시 우선 전략(stale-while-revalidate)으로 제공.
 // 네트워크 요청(Supabase 등)은 그대로 통과.
 
-const CACHE = 'recipe-app-v4';
+const CACHE = 'recipe-app-v5';
 const STATIC_ASSETS = [
   './app.html',
   './styles.css',
@@ -16,6 +16,7 @@ const STATIC_ASSETS = [
   './src/config.js',
   './src/supabaseClient.js',
   './src/icons.js',
+  './src/ingredientMatch.js',
   './src/api/analyzeVideo.js',
   './src/api/syncSupabase.js',
   './src/views/home.js',

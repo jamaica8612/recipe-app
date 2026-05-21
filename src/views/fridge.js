@@ -1,14 +1,23 @@
 // 냉장고 — 가진 재료를 기준으로 만들 수 있는 레시피 추천
 import { html, raw, ytThumbnail } from '../util.js';
-import { addFridgeItem, deleteFridgeItem, getState, toggleFridgeItem } from '../store.js';
+import {
+  addFridgeItem,
+  deleteFridgeItem,
+  getState,
+  setFridgeFocusItem,
+  toggleFridgeItem,
+} from '../store.js';
 import { deleteFridgeItemFromSupabase, syncFridgeItemToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
+import { hasFuzzyOverlap, makeIngredientTerms } from '../ingredientMatch.js';
 
 export function renderFridge() {
   const s = getState();
   const items = s.fridgeItems || [];
-  const activeItems = items.filter((item) => item.checked);
+  const focusedItem = items.find((item) => item.id === s.filter.fridgeFocusId);
+  const activeItems = focusedItem ? [focusedItem] : items.filter((item) => item.checked);
   const matches = rankRecipesByFridge(s.recipes || [], activeItems);
+  const urgentCount = items.filter((item) => getExpiryState(item).tone === 'danger' || getExpiryState(item).tone === 'warn').length;
 
   return {
     header: html`
@@ -18,8 +27,17 @@ export function renderFridge() {
     body: html`
       <form class="fridge-form" data-action="add-fridge-item">
         <label class="field">
+          <span class="field-label">재료</span>
           <input class="input" name="ingredient" autocomplete="off"
                  placeholder="있는 재료 입력: 두부, 대파, 양파..." />
+        </label>
+        <label class="field">
+          <span class="field-label">입고일</span>
+          <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
+        </label>
+        <label class="field">
+          <span class="field-label">유통기한</span>
+          <input class="input" name="expiresAt" type="date" />
         </label>
         <button class="primary-btn" type="submit">추가</button>
       </form>
@@ -28,18 +46,19 @@ export function renderFridge() {
         <div class="section-row">
           <div>
             <h2 class="section-title">있는 재료</h2>
-            <p class="section-note">체크된 재료만 추천에 반영돼요</p>
+            <p class="section-note">${urgentCount ? `임박/만료 ${urgentCount}개 먼저 확인하세요` : '재료를 누르면 그 재료로 만들 수 있는 레시피를 보여줘요'}</p>
           </div>
         </div>
-        ${raw(renderFridgeItems(items))}
+        ${raw(renderFridgeItems(items, focusedItem?.id))}
       </section>
 
       <section class="fridge-section">
         <div class="section-row">
           <div>
-            <h2 class="section-title">오늘 만들 수 있는 것</h2>
+            <h2 class="section-title">${focusedItem ? `${focusedItem.name}로 만들 수 있는 것` : '오늘 만들 수 있는 것'}</h2>
             <p class="section-note">${activeItems.length ? `${activeItems.length}개 재료 기준` : '재료를 추가하면 추천이 떠요'}</p>
           </div>
+          ${focusedItem ? raw(`<button class="ghost-btn fridge-clear-focus" type="button" data-action="clear-fridge-focus">전체 보기</button>`) : ''}
         </div>
         ${raw(renderMatches(matches, activeItems))}
       </section>
@@ -50,7 +69,7 @@ export function renderFridge() {
   };
 }
 
-function renderFridgeItems(items) {
+function renderFridgeItems(items, focusedId) {
   if (!items.length) {
     return html`
       <div class="empty mini-empty">
@@ -63,13 +82,25 @@ function renderFridgeItems(items) {
 
   return html`
     <div class="fridge-list">
-      ${raw(items.map((item) => html`
-        <label class="fridge-chip ${item.checked ? 'is-on' : ''}">
-          <input type="checkbox" data-action="toggle-fridge-item" data-id="${item.id}" ${item.checked ? 'checked' : ''} />
-          <span>${item.name}</span>
-          <button type="button" data-action="delete-fridge-item" data-id="${item.id}" title="삭제">×</button>
-        </label>
-      `).join(''))}
+      ${raw(sortFridgeItems(items).map((item) => renderFridgeItem(item, focusedId)).join(''))}
+    </div>
+  `;
+}
+
+function renderFridgeItem(item, focusedId) {
+  const expiry = getExpiryState(item);
+  return html`
+    <div class="fridge-item ${item.checked ? 'is-on' : ''} ${focusedId === item.id ? 'is-focused' : ''} ${expiry.tone ? `is-${expiry.tone}` : ''}">
+      <input type="checkbox" data-action="toggle-fridge-item" data-id="${item.id}" ${item.checked ? 'checked' : ''} aria-label="${item.name} 추천 반영" />
+      <button type="button" class="fridge-item-main" data-action="focus-fridge-item" data-id="${item.id}">
+        <span class="fridge-item-name">${item.name}</span>
+        <span class="fridge-item-meta">
+          ${item.purchasedAt ? raw(`<span>입고 ${formatDateLabel(item.purchasedAt)}</span>`) : raw('<span>입고일 없음</span>')}
+          ${item.expiresAt ? raw(`<span>기한 ${formatDateLabel(item.expiresAt)}</span>`) : raw('<span>기한 없음</span>')}
+        </span>
+      </button>
+      <span class="fridge-expiry fridge-expiry--${expiry.tone || 'neutral'}">${expiry.label}</span>
+      <button class="fridge-delete" type="button" data-action="delete-fridge-item" data-id="${item.id}" title="삭제">×</button>
     </div>
   `;
 }
@@ -149,44 +180,6 @@ function rankRecipesByFridge(recipes, activeItems) {
     .slice(0, 10);
 }
 
-const INGREDIENT_ALIASES = [
-  ['김치', '신김치', '묵은지', '배추김치'],
-  ['돼지고기', '돼지', '돈육', '앞다리살', '뒷다리살', '목살', '삼겹살', '다진돼지고기'],
-  ['소고기', '쇠고기', '우육', '불고기', '다진소고기'],
-  ['닭고기', '닭', '닭다리살', '닭가슴살', '닭안심'],
-  ['대파', '파', '쪽파', '실파'],
-  ['양파', '적양파'],
-  ['마늘', '다진마늘', '통마늘'],
-  ['생강', '다진생강'],
-  ['고추', '청양고추', '풋고추', '홍고추'],
-  ['두부', '연두부', '순두부', '부침두부', '찌개두부'],
-  ['계란', '달걀', '노른자', '흰자'],
-  ['버섯', '표고버섯', '새송이버섯', '양송이버섯', '느타리버섯', '팽이버섯'],
-  ['면', '스파게티면', '파스타면', '소면', '중면', '우동면', '라면사리'],
-  ['치즈', '파마산', '파르미지아노', '페코리노', '모짜렐라', '체다'],
-  ['베이컨', '판체타', '햄'],
-  ['연어', '연어필레', '생연어'],
-  ['간장', '진간장', '양조간장', '국간장'],
-  ['설탕', '흑설탕', '황설탕', '올리고당', '물엿', '꿀'],
-  ['맛술', '미림', '청주', '요리술'],
-  ['고추장', '초고추장'],
-  ['된장', '미소'],
-  ['고춧가루', '고추가루'],
-  ['식초', '현미식초', '사과식초'],
-  ['기름', '식용유', '올리브유', '카놀라유', '포도씨유'],
-  ['참기름', '들기름'],
-  ['밥', '쌀밥', '현미밥', '즉석밥'],
-  ['감자', '알감자'],
-  ['당근', '홍당무'],
-  ['양배추', '배추'],
-];
-
-const TERM_TO_GROUP = new Map();
-for (const group of INGREDIENT_ALIASES) {
-  const normalized = group.map((item) => normalizeIngredientName(item)).filter(Boolean);
-  for (const term of normalized) TERM_TO_GROUP.set(term, normalized);
-}
-
 function matchIngredient(ingredientName, fridgeTerms) {
   const ingredientTerms = makeIngredientTerms(ingredientName);
   let best = null;
@@ -210,54 +203,11 @@ function matchIngredient(ingredientName, fridgeTerms) {
 function dedupeMatches(matches) {
   const map = new Map();
   for (const match of matches) {
-    const key = normalizeIngredientName(match.name);
+    const key = makeIngredientTerms(match.name).canonical;
     const existing = map.get(key);
     if (!existing || match.score > existing.score) map.set(key, match);
   }
   return Array.from(map.values());
-}
-
-function makeIngredientTerms(name) {
-  const original = String(name || '').trim();
-  const canonical = normalizeIngredientName(original);
-  const terms = new Set(canonical ? [canonical] : []);
-  for (const token of tokenizeIngredientName(original)) {
-    const normalized = normalizeIngredientName(token);
-    if (normalized) terms.add(normalized);
-  }
-  for (const term of [...terms]) {
-    const group = TERM_TO_GROUP.get(term);
-    if (group) group.forEach((alias) => terms.add(alias));
-  }
-  return { original, canonical, terms };
-}
-
-function tokenizeIngredientName(name) {
-  return String(name || '')
-    .replace(/[()[\],·]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function hasFuzzyOverlap(aTerms, bTerms) {
-  for (const a of aTerms) {
-    if (a.length < 2) continue;
-    for (const b of bTerms) {
-      if (b.length < 2) continue;
-      if (a.includes(b) || b.includes(a)) return true;
-    }
-  }
-  return false;
-}
-
-function normalizeIngredientName(name) {
-  return String(name || '')
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[0-9./]+/g, '')
-    .replace(/[a-z]+/g, '')
-    .replace(/필레|슬라이스|다진|간|생|냉동|냉장|통|국산|수입/g, '')
-    .trim();
 }
 
 export function bindFridge(rootEl, navigate) {
@@ -266,9 +216,14 @@ export function bindFridge(rootEl, navigate) {
     if (!form) return;
     e.preventDefault();
     const input = form.elements.ingredient;
-    const id = addFridgeItem(input.value);
+    const id = addFridgeItem({
+      name: input.value,
+      purchasedAt: form.elements.purchasedAt?.value,
+      expiresAt: form.elements.expiresAt?.value,
+    });
     if (id) {
       input.value = '';
+      if (form.elements.expiresAt) form.elements.expiresAt.value = '';
       persistFridgeItem(id);
     }
   });
@@ -285,6 +240,10 @@ export function bindFridge(rootEl, navigate) {
       deleteFridgeItemFromSupabase(id).catch((err) => {
         console.warn('Supabase fridge delete failed', err);
       });
+    } else if (action === 'focus-fridge-item') {
+      setFridgeFocusItem(getState().filter.fridgeFocusId === id ? null : id);
+    } else if (action === 'clear-fridge-focus') {
+      setFridgeFocusItem(null);
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
     }
@@ -297,6 +256,40 @@ export function bindFridge(rootEl, navigate) {
       persistFridgeItem(target.dataset.id);
     }
   });
+}
+
+function sortFridgeItems(items) {
+  return [...items].sort((a, b) => {
+    const aState = getExpiryState(a);
+    const bState = getExpiryState(b);
+    return aState.rank - bState.rank
+      || String(a.expiresAt || '9999-12-31').localeCompare(String(b.expiresAt || '9999-12-31'))
+      || a.name.localeCompare(b.name, 'ko');
+  });
+}
+
+function getExpiryState(item) {
+  if (!item.expiresAt) return { label: '기한 없음', tone: 'neutral', rank: 4 };
+  const days = daysUntil(item.expiresAt);
+  if (days < 0) return { label: `${Math.abs(days)}일 지남`, tone: 'danger', rank: 0 };
+  if (days === 0) return { label: '오늘까지', tone: 'danger', rank: 1 };
+  if (days <= 3) return { label: `${days}일 남음`, tone: 'warn', rank: 2 };
+  return { label: `${days}일 남음`, tone: 'ok', rank: 3 };
+}
+
+function daysUntil(dateValue) {
+  const today = new Date(todayString());
+  const target = new Date(dateValue);
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function todayString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDateLabel(value) {
+  const [year, month, day] = String(value || '').split('-');
+  return year && month && day ? `${Number(month)}/${Number(day)}` : '';
 }
 
 function persistFridgeItem(id) {

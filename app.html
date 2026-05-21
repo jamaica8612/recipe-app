@@ -725,12 +725,17 @@
     /* Fridge */
     .fridge-form {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) minmax(0, .72fr);
       gap: 8px;
       align-items: start;
       margin-bottom: 20px;
     }
     .fridge-form .field { margin: 0; }
+    .fridge-form .primary-btn {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+    .fridge-form .field:first-child { grid-column: 1 / -1; }
     .fridge-section { margin-top: 22px; }
     .section-title {
       font-family: var(--f-serif);
@@ -739,44 +744,92 @@
       margin: 0 0 2px;
     }
     .fridge-list {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
       gap: 8px;
     }
-    .fridge-chip {
-      display: inline-flex;
+    .fridge-item {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) auto 28px;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       border: 1px solid var(--c-line);
       background: var(--c-surface-2);
-      border-radius: var(--r-full);
-      padding: 7px 8px 7px 10px;
+      border-radius: var(--r-md);
+      padding: 10px;
       color: var(--c-ink-2);
       font-size: var(--t-sm);
-      font-weight: 700;
     }
-    .fridge-chip.is-on {
+    .fridge-item.is-on {
       background: #fff7ee;
       border-color: #f0dfc9;
-      color: var(--c-terra-2);
     }
-    .fridge-chip input { accent-color: var(--c-terra); }
-    .fridge-chip button {
+    .fridge-item.is-focused {
+      border-color: var(--c-terra);
+      box-shadow: 0 0 0 3px rgba(178,69,44,.12);
+    }
+    .fridge-item input { accent-color: var(--c-terra); }
+    .fridge-item-main {
       border: 0;
       background: transparent;
-      color: inherit;
+      color: var(--c-ink);
       cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-      width: 24px;
-      height: 24px;
+      min-width: 0;
       padding: 0;
-      border-radius: var(--r-full);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      text-align: left;
     }
-    .fridge-chip button:hover { background: rgba(178,69,44,.1); }
+    .fridge-item-name {
+      display: block;
+      font-weight: 800;
+      line-height: 1.25;
+    }
+    .fridge-item-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+      margin-top: 3px;
+      color: var(--c-ink-3);
+      font-size: var(--t-2xs);
+      line-height: 1.35;
+    }
+    .fridge-expiry {
+      justify-self: end;
+      border-radius: var(--r-full);
+      padding: 4px 8px;
+      font-size: var(--t-2xs);
+      font-weight: 800;
+      white-space: nowrap;
+      background: var(--c-surface);
+      color: var(--c-ink-3);
+      border: 1px solid var(--c-line);
+    }
+    .fridge-expiry--danger {
+      background: var(--c-danger-soft);
+      color: var(--c-danger);
+      border-color: #ecc3b8;
+    }
+    .fridge-expiry--warn {
+      background: var(--c-warn-soft);
+      color: #8a5b16;
+      border-color: #ecd7a8;
+    }
+    .fridge-expiry--ok {
+      background: var(--c-success-soft);
+      color: var(--c-success);
+      border-color: #cdd8b5;
+    }
+    .fridge-delete {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: var(--r-full);
+      background: transparent;
+      color: var(--c-ink-3);
+      cursor: pointer;
+      font-size: 17px;
+      line-height: 1;
+    }
+    .fridge-delete:hover { background: rgba(178,69,44,.1); color: var(--c-terra); }
+    .fridge-clear-focus { min-height: 32px; padding: 0 12px; font-size: var(--t-xs); }
     .mini-empty {
       padding: 24px 14px;
       border: 1px dashed var(--c-line);
@@ -869,7 +922,7 @@
     <!-- 뷰가 여기에 렌더링됨 -->
   </div>
 
-  <script type="module" src="src/app.js?v=20260521-pwa-v1"></script>
+  <script type="module" src="src/app.js?v=20260521-fridge-dates-v1"></script>
   <script>
     // PWA 서비스 워커 등록 (오프라인 + 홈화면 추가 가능)
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {

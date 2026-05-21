@@ -9,8 +9,8 @@ import { renderEditRecipe, bindEditRecipe } from './views/editRecipe.js?v=202605
 import { renderMembers, bindMembers } from './views/members.js';
 import { renderSettings, bindSettings } from './views/settings.js?v=20260521-icons-v1';
 import { renderAccount, bindAccount } from './views/account.js';
-import { renderSearch, bindSearch } from './views/search.js?v=20260521-icons-v1';
-import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v3';
+import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v2';
+import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v4';
 import { icon } from './icons.js';
 
 const app = document.querySelector('#app');
