@@ -775,6 +775,37 @@
       border-radius: inherit;
       background: var(--c-terra);
     }
+    .match-alias {
+      margin-top: 3px;
+      color: var(--c-olive-2);
+      font-size: var(--t-xs);
+      line-height: 1.35;
+    }
+
+    /* App update notice */
+    .update-toast {
+      position: fixed;
+      left: max(16px, env(safe-area-inset-left));
+      right: max(16px, env(safe-area-inset-right));
+      bottom: calc(82px + env(safe-area-inset-bottom));
+      z-index: 30;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 12px 12px 12px 14px;
+      border: 1px solid var(--c-line-2);
+      border-radius: var(--r-md);
+      background: rgba(255, 252, 246, .98);
+      box-shadow: var(--shadow-float);
+      color: var(--c-ink);
+      font-size: var(--t-sm);
+    }
+    .update-toast strong { display: block; margin-bottom: 2px; }
+    .update-toast button { white-space: nowrap; }
+    .update-toast[hidden] { display: none; }
 
     /* Settings menu links */
     .setting-links { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
@@ -816,13 +847,53 @@
     <!-- 뷰가 여기에 렌더링됨 -->
   </div>
 
-  <script type="module" src="src/app.js?v=20260521-detail-v3"></script>
+  <script type="module" src="src/app.js?v=20260521-pwa-v1"></script>
   <script>
     // PWA 서비스 워커 등록 (오프라인 + 홈화면 추가 가능)
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+        registerServiceWorker();
       });
+    }
+
+    function registerServiceWorker() {
+      let refreshing = false;
+      navigator.serviceWorker.register('sw.js').then((registration) => {
+        registration.addEventListener('updatefound', () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateToast();
+            }
+          });
+        });
+
+        if (registration.waiting && navigator.serviceWorker.controller) {
+          showUpdateToast();
+        }
+      }).catch(() => {});
+
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        refreshing = true;
+        showUpdateToast();
+      });
+    }
+
+    function showUpdateToast() {
+      if (document.querySelector('.update-toast')) return;
+      const toast = document.createElement('div');
+      toast.className = 'update-toast';
+      toast.innerHTML = `
+        <div>
+          <strong>새 버전이 준비됐어요</strong>
+          <span>새로고침하면 최신 기능으로 바뀝니다.</span>
+        </div>
+        <button class="primary-btn" type="button">새로고침</button>
+      `;
+      toast.querySelector('button').addEventListener('click', () => location.reload());
+      document.body.appendChild(toast);
     }
   </script>
 </body>
