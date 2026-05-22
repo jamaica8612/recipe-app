@@ -156,6 +156,13 @@ export function updateRecipe(id, patch) {
     recipes: s.recipes.map((r) => (r.id === id ? { ...r, ...patch } : r)),
   }));
 }
+
+export function setRecipeShareCode(id, shareCode) {
+  set((s) => ({
+    ...s,
+    recipes: s.recipes.map((r) => (r.id === id ? { ...r, shareCode: shareCode || null } : r)),
+  }));
+}
 export function deleteRecipe(id) {
   set((s) => ({ ...s, recipes: s.recipes.filter((r) => r.id !== id) }));
 }

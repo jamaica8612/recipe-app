@@ -170,6 +170,44 @@ export async function syncFridgeItemToSupabase(item) {
   return { skipped: false, fridgeItems: result };
 }
 
+export async function generateShareCode(localRecipeId) {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('로그인이 필요합니다.');
+
+  // 8자리 랜덤 코드 생성
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(6)))
+    .map((b) => b.toString(36).padStart(2, '0'))
+    .join('')
+    .toUpperCase()
+    .slice(0, 8);
+
+  const { data, error } = await supabase
+    .from('recipes')
+    .update({ share_code: code })
+    .eq('user_id', userData.user.id)
+    .eq('source_local_id', localRecipeId)
+    .select('share_code')
+    .single();
+
+  if (error) throw error;
+  return data.share_code;
+}
+
+export async function revokeShareCode(localRecipeId) {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('로그인이 필요합니다.');
+
+  const { error } = await supabase
+    .from('recipes')
+    .update({ share_code: null })
+    .eq('user_id', userData.user.id)
+    .eq('source_local_id', localRecipeId);
+
+  if (error) throw error;
+}
+
 export async function deleteFridgeItemFromSupabase(localItemId) {
   const supabase = getSupabaseClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -215,6 +253,7 @@ export async function loadSupabaseDataIntoLocalState() {
         cook_time_min,
         custom_notes,
         is_favorite,
+        share_code,
         created_at,
         recipe_ingredients(name,amount,unit,sort_order),
         recipe_steps(step_order,text,timestamp_sec),
@@ -292,6 +331,7 @@ export async function loadSupabaseDataIntoLocalState() {
         .map((line) => line.trim())
         .filter(Boolean),
       remoteId: recipe.id,
+      shareCode: recipe.share_code || null,
     };
   });
 

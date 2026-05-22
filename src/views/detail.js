@@ -1,6 +1,6 @@
 import { esc, html, raw, ytThumbnail, formatTimestamp } from '../util.js';
-import { consumeFlash, deleteRecipe, getState, toggleFavorite } from '../store.js';
-import { deleteRecipeFromSupabase, syncRecipeToSupabase } from '../api/syncSupabase.js';
+import { consumeFlash, deleteRecipe, getState, setRecipeShareCode, toggleFavorite } from '../store.js';
+import { deleteRecipeFromSupabase, generateShareCode, revokeShareCode, syncRecipeToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
 
 export function renderDetail(recipeId) {
@@ -117,6 +117,19 @@ export function renderDetail(recipeId) {
             <button class="btn btn--secondary btn--block" data-action="edit-recipe" type="button">${raw(icon('edit', 15))} 수정</button>
             <button class="btn btn--secondary btn--block" data-action="delete-recipe" type="button">${raw(icon('trash', 15))} 삭제</button>
           </div>
+          <div class="share-box" id="share-box">
+            ${recipe.shareCode ? raw(`
+              <div class="share-active">
+                <span class="share-active-label">${raw(icon('link', 14))} 공유 링크 활성화됨</span>
+                <div class="share-active-btns">
+                  <button class="btn btn--outline btn--sm" data-action="copy-share-link" data-code="${esc(recipe.shareCode)}">링크 복사</button>
+                  <button class="btn btn--ghost btn--sm" data-action="revoke-share" data-recipe-id="${esc(recipe.id)}">링크 삭제</button>
+                </div>
+              </div>
+            `) : raw(`
+              <button class="btn btn--outline btn--block" data-action="create-share" data-recipe-id="${esc(recipe.id)}">${icon('share', 15)} 공유 링크 만들기</button>
+            `)}
+          </div>
           <div class="field-help" id="delete-status"></div>
         </section>
       </article>
@@ -184,7 +197,75 @@ export function bindDetail(rootEl, navigate, recipeId) {
       deleteRecipe(recipeId);
       navigate('/home');
     }
+    if (target.dataset.action === 'create-share') {
+      target.disabled = true;
+      target.textContent = '링크 생성 중...';
+      try {
+        const code = await generateShareCode(recipeId);
+        setRecipeShareCode(recipeId, code);
+        renderShareBox(rootEl, recipeId, code);
+        copyShareLink(code);
+        showShareToast(rootEl, '링크를 복사했습니다!');
+      } catch (err) {
+        console.warn('Share code generation failed', err);
+        target.disabled = false;
+        target.innerHTML = `${icon('share', 15)} 공유 링크 만들기`;
+      }
+    }
+    if (target.dataset.action === 'copy-share-link') {
+      copyShareLink(target.dataset.code);
+      showShareToast(rootEl, '링크를 복사했습니다!');
+    }
+    if (target.dataset.action === 'revoke-share') {
+      if (!confirm('공유 링크를 삭제할까요? 이 링크로 접근이 불가능해집니다.')) return;
+      target.disabled = true;
+      try {
+        await revokeShareCode(recipeId);
+        setRecipeShareCode(recipeId, null);
+        renderShareBox(rootEl, recipeId, null);
+      } catch (err) {
+        console.warn('Revoke share failed', err);
+        target.disabled = false;
+      }
+    }
   });
+}
+
+function renderShareBox(rootEl, recipeId, code) {
+  const box = rootEl.querySelector('#share-box');
+  if (!box) return;
+  if (code) {
+    box.innerHTML = `
+      <div class="share-active">
+        <span class="share-active-label">${icon('link', 14)} 공유 링크 활성화됨</span>
+        <div class="share-active-btns">
+          <button class="btn btn--outline btn--sm" data-action="copy-share-link" data-code="${code}">링크 복사</button>
+          <button class="btn btn--ghost btn--sm" data-action="revoke-share" data-recipe-id="${recipeId}">링크 삭제</button>
+        </div>
+      </div>
+    `;
+  } else {
+    box.innerHTML = `
+      <button class="btn btn--outline btn--block" data-action="create-share" data-recipe-id="${recipeId}">${icon('share', 15)} 공유 링크 만들기</button>
+    `;
+  }
+}
+
+function copyShareLink(code) {
+  const url = `${location.origin}${location.pathname}#/shared/${code}`;
+  navigator.clipboard.writeText(url).catch(() => {});
+}
+
+function showShareToast(rootEl, message) {
+  let toast = rootEl.querySelector('.share-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'share-toast';
+    rootEl.querySelector('.app-content')?.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('is-visible');
+  setTimeout(() => toast.classList.remove('is-visible'), 2000);
 }
 
 function ingredientChip(item, baseServings, targetServings) {

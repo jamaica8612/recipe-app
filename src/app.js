@@ -14,6 +14,7 @@ import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v5
 import { getSupabaseClient } from './supabaseClient.js';
 import { loadSupabaseDataIntoLocalState } from './api/syncSupabase.js';
 import { icon } from './icons.js';
+import { renderSharedView } from './views/shared.js';
 
 const app = document.querySelector('#app');
 let activeRoute = currentRoute();
@@ -108,6 +109,22 @@ function showLoadingScreen(message = '불러오는 중…') {
 }
 
 async function init() {
+  // 공유 링크 경로 → 인증 없이 바로 렌더
+  const initialHash = location.hash;
+  if (initialHash.startsWith('#/shared/')) {
+    const code = initialHash.slice('#/shared/'.length).split('/')[0];
+    if (code) {
+      await renderSharedView(code, app);
+      // hashchange 감지: 앱 내부 링크(#/account 등) 클릭 시 정상 앱으로 전환
+      window.addEventListener('hashchange', () => {
+        if (!location.hash.startsWith('#/shared/')) {
+          init();
+        }
+      }, { once: true });
+      return;
+    }
+  }
+
   // 로그인 상태 확인
   let user = null;
   try {
