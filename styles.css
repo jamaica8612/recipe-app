@@ -167,6 +167,7 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .btn--sm   { min-height: 34px; padding: 6px 12px; font-size: var(--t-xs); }
 .btn--lg   { min-height: 46px; padding: 14px 24px; font-size: var(--t-body); }
 .btn--block{ width: 100%; }
+.btn--block + .btn--block { margin-top: 8px; }
 .btn[disabled] { background: var(--c-surface-3); color: var(--c-ink-3);
                  cursor: not-allowed; border-color: transparent; }
 
