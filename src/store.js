@@ -1,56 +1,48 @@
-// 매우 단순한 전역 상태 — localStorage로 영속화 + 변경 시 콜백 호출
-// Supabase 연동 시 fetch/insert/update 로직만 이 안에서 바꾸면 됨
+// 전역 상태 — 런타임 인메모리 + filter만 localStorage로 유지
+// 데이터(레시피·구성원·카테고리·냉장고)는 Supabase가 단일 소스
 
-import { RECIPES, MEMBERS, CATEGORIES } from './data.js';
+import { CATEGORIES } from './data.js';
 import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from './ingredientMatch.js';
 
-const KEY = 'recipe-app:v1';
+// filter 상태만 localStorage에 저장 (UI 편의용)
+const FILTER_KEY = 'recipe-app:filter';
 
-function loadFromStorage() {
+function loadFilterFromStorage() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    return normalizeState(JSON.parse(raw));
+    const raw = localStorage.getItem(FILTER_KEY);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-function saveToStorage(state) {
+function saveFilterToStorage(filter) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* 용량 초과 등은 일단 무시 */
-  }
+    localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
+  } catch { /* ignore */ }
+}
+
+function defaultFilter() {
+  return {
+    categoryId: 'all',
+    memberId: null,
+    favoriteOnly: false,
+    query: '',
+    viewMode: 'category',
+    fridgeFocusId: null,
+    fridgeSort: 'expiry',
+  };
 }
 
 function defaultState() {
   return {
-    recipes:    [...RECIPES],
-    members:    [...MEMBERS],
+    recipes: [],
+    members: [],
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry' },
-  };
-}
-
-function normalizeState(value) {
-  const base = defaultState();
-  if (!value || typeof value !== 'object') return base;
-
-  return {
-    ...base,
-    ...value,
-    recipes: Array.isArray(value.recipes) ? value.recipes : base.recipes,
-    members: Array.isArray(value.members) ? value.members : base.members,
-    categories: normalizeCategories(value.categories, base.categories),
-    fridgeItems: normalizeFridgeItems(value.fridgeItems),
-    analysisDrafts: Array.isArray(value.analysisDrafts) ? value.analysisDrafts : [],
-    filter: {
-      ...base.filter,
-      ...(value.filter && typeof value.filter === 'object' ? value.filter : {}),
-    },
+    filter: { ...defaultFilter(), ...loadFilterFromStorage() },
+    flash: '',
   };
 }
 
@@ -78,9 +70,7 @@ function normalizeDateValue(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 }
 
-const initial = loadFromStorage() || defaultState();
-
-let state = initial;
+let state = defaultState();
 const listeners = new Set();
 
 export function getState() { return state; }
@@ -88,7 +78,7 @@ export function subscribe(fn) { listeners.add(fn); return () => listeners.delete
 
 function set(updater) {
   state = typeof updater === 'function' ? updater(state) : { ...state, ...updater };
-  saveToStorage(state);
+  saveFilterToStorage(state.filter);
   for (const fn of listeners) fn(state);
 }
 
@@ -109,7 +99,6 @@ export function setSearchQuery(query) {
   set((s) => ({ ...s, filter: { ...s.filter, query: String(query || '') } }));
 }
 export function setViewMode(viewMode) {
-  // viewMode: 'category' | 'member' | 'chef'
   const allowed = ['category', 'member', 'chef'];
   const next = allowed.includes(viewMode) ? viewMode : 'category';
   set((s) => ({ ...s, filter: { ...s.filter, viewMode: next } }));
@@ -291,7 +280,7 @@ export function replaceLibrary({ members, recipes, categories, fridgeItems }) {
     recipes: recipes || [],
     categories: categories || s.categories,
     fridgeItems: Array.isArray(fridgeItems) ? fridgeItems : (s.fridgeItems || []),
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
+    filter: { ...defaultFilter(), ...loadFilterFromStorage() },
   }));
 }
 
@@ -303,7 +292,6 @@ export function consumeFlash() {
   const message = state.flash || '';
   if (message) {
     state = { ...state, flash: '' };
-    saveToStorage(state);
   }
   return message;
 }

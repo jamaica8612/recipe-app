@@ -123,7 +123,7 @@ export function bindSettings(rootEl, navigate) {
         setCategoryStatus(rootEl, '삭제했습니다.');
       } catch (err) {
         console.warn('Supabase category delete failed', err);
-        setCategoryStatus(rootEl, '로컬에서 삭제했습니다. 계정 화면에서 다시 백업해 주세요.');
+        setCategoryStatus(rootEl, '삭제에 실패했습니다. 네트워크 연결을 확인해주세요.');
       } finally {
         deleteCategory(category.id);
       }
@@ -165,11 +165,11 @@ export function bindSettings(rootEl, navigate) {
     if (category) {
       setCategoryStatus(rootEl, editingId ? '카테고리 수정 중...' : '카테고리 저장 중...');
       try {
-        const result = await syncCategoryToSupabase(category);
-        setCategoryStatus(rootEl, result.skipped ? '로컬에 저장했습니다. 로그인하면 백업할 수 있어요.' : '저장했습니다.');
+        await syncCategoryToSupabase(category);
+        setCategoryStatus(rootEl, '저장했습니다.');
       } catch (err) {
         console.warn('Supabase category sync failed', err);
-        setCategoryStatus(rootEl, '로컬에 저장했습니다. 계정 화면에서 다시 백업할 수 있어요.');
+        setCategoryStatus(rootEl, '저장에 실패했습니다. 네트워크 연결을 확인해주세요.');
       }
     }
     resetCategoryForm(rootEl);

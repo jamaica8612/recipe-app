@@ -174,13 +174,11 @@ export function bindEditRecipe(rootEl, navigate, recipeId) {
     const updated = getState().recipes.find((item) => item.id === recipeId);
 
     try {
-      const result = updated ? await syncRecipeToSupabase(updated) : { skipped: true };
-      setFlash(result.skipped
-        ? '로컬에 저장했습니다. 로그인하면 클라우드에도 백업할 수 있어요.'
-        : '저장했습니다.');
+      if (updated) await syncRecipeToSupabase(updated);
+      setFlash('저장했습니다.');
     } catch (err) {
       console.warn('Supabase recipe edit sync failed', err);
-      setFlash('로컬에 저장했습니다. 계정 화면에서 다시 백업할 수 있어요.');
+      setFlash('저장에 실패했습니다. 네트워크 연결을 확인해주세요.');
     }
 
     navigate(`/recipe/${recipeId}`);

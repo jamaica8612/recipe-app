@@ -117,12 +117,19 @@ serve(async (req) => {
   }
 
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  const youtubeApiKey = Deno.env.get("YOUTUBE_API_KEY");
 
   const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
   // 2.5-flash-lite는 가벼운 모델이라 별도 capacity pool에 가까움 — flash/pro 고수요 시 먼저 회피.
   // (2.0-flash는 2026년에 신규 사용자에게 deprecated 되어 404 반환됨)
   const fallbackModel = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-2.5-flash-lite";
   const secondaryFallbackModel = Deno.env.get("GEMINI_SECONDARY_FALLBACK_MODEL") || "gemini-2.5-pro";
+
+  // 댓글 가져오기 (YouTube API 키가 있을 때만, 실패해도 분석은 계속)
+  const comments = youtubeApiKey
+    ? await fetchYouTubeComments(videoId, youtubeApiKey)
+    : [];
+
   const analysisResult = geminiKey
     ? await analyzeWithGemini({
       apiKey: geminiKey,
@@ -131,6 +138,7 @@ serve(async (req) => {
       secondaryFallbackModel,
       url: body.url || `https://youtu.be/${videoId}`,
       videoId,
+      comments,
     })
     : { ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const };
 
@@ -308,6 +316,7 @@ async function analyzeWithGemini({
   secondaryFallbackModel,
   url,
   videoId,
+  comments,
 }: {
   apiKey: string;
   model: string;
@@ -315,6 +324,7 @@ async function analyzeWithGemini({
   secondaryFallbackModel?: string;
   url: string;
   videoId: string;
+  comments: string[];
 }): Promise<
   | { ok: true; source: "gemini"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
   | { ok: false; reason: FailureReason; message?: string }
@@ -331,7 +341,7 @@ async function analyzeWithGemini({
   let lastResult: GeminiResult = { ok: false, reason: "api_unavailable" };
   let usedModel = model;
   for (const m of attempts) {
-    lastResult = await callGemini({ apiKey, model: m, url });
+    lastResult = await callGemini({ apiKey, model: m, url, comments });
     if (lastResult.ok) {
       usedModel = m;
       break;
@@ -371,21 +381,29 @@ async function callGemini({
   apiKey,
   model,
   url,
+  comments,
 }: {
   apiKey: string;
   model: string;
   url: string;
+  comments: string[];
 }): Promise<
   | { ok: true; parsed: unknown }
   | { ok: false; reason: FailureReason; message?: string }
 > {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const parts: Array<{ text: string } | { file_data: { file_uri: string } }> = [
+    { text: recipePrompt(comments.length > 0) },
+    { file_data: { file_uri: url } },
+  ];
+  if (comments.length > 0) {
+    parts.push({
+      text: `\n\n--- 시청자 댓글 (인기순 ${comments.length}개) ---\n${comments.join("\n")}`,
+    });
+  }
   const requestBody = JSON.stringify({
     contents: [{
-      parts: [
-        { text: recipePrompt() },
-        { file_data: { file_uri: url } },
-      ],
+      parts,
     }],
     generationConfig: {
       responseMimeType: "application/json",
@@ -443,15 +461,24 @@ async function callGemini({
   return { ok: true, parsed };
 }
 
-function recipePrompt() {
-  return [
+function recipePrompt(hasComments = false) {
+  const lines = [
     "이 YouTube 요리 영상을 한국어 레시피로 구조화하세요.",
     "요리 영상이 아니면 isRecipe를 false로 반환하세요.",
     "channelName에는 셰프 개인명이 아니라 YouTube 채널명 또는 영상 출처명을 넣으세요. 확실하지 않으면 빈 문자열로 두세요.",
     "situationTagIds에는 허용된 태그 ID 중 적절한 것을 0~3개만 고르세요: party(홈파티), solo(혼밥), lunchbox(도시락), diet(다이어트), quick(초스피드), airfryer(에어프라이어), guest(손님상), late(야식).",
     "재료명, 수량, 단위, 조리 단계, 원본 영상 timestampSec, 팁을 추출하세요.",
     "확실하지 않은 값은 빈 문자열 또는 0으로 두고 confidence를 낮추세요.",
-  ].join("\n");
+  ];
+  if (hasComments) {
+    lines.push(
+      "제공된 댓글을 분석해 시청자들의 주요 의견을 commentInsights에 3~5개 요약하세요.",
+      "각 항목은 emoji(이모지 1개)와 text(한 줄 한국어 요약)로 구성하세요.",
+      "맛 평가, 양 조절, 재료 대체, 조리 시간/온도 팁 등 실제로 도움되는 의견을 우선하세요.",
+      "의미있는 의견이 없으면 commentInsights를 빈 배열로 두세요.",
+    );
+  }
+  return lines.join("\n");
 }
 
 function recipeResponseSchema() {
@@ -503,6 +530,17 @@ function recipeResponseSchema() {
         type: "array",
         items: { type: "string" },
       },
+      commentInsights: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            emoji: { type: "string" },
+            text: { type: "string" },
+          },
+          required: ["emoji", "text"],
+        },
+      },
     },
     required: [
       "isRecipe",
@@ -516,6 +554,7 @@ function recipeResponseSchema() {
       "ingredients",
       "steps",
       "tips",
+      "commentInsights",
     ],
   };
 }
@@ -558,6 +597,18 @@ function normalizeGeminiRecipe(value: unknown, videoId: string) {
     ingredients,
     steps,
     tips: Array.isArray(recipe.tips) ? recipe.tips.map((tip) => String(tip).trim()).filter(Boolean) : [],
+    commentInsights: Array.isArray(recipe.commentInsights)
+      ? recipe.commentInsights
+          .map((item) => {
+            const i = item as Record<string, unknown>;
+            return {
+              emoji: String(i.emoji || "💬").trim().slice(0, 4),
+              text: String(i.text || "").trim(),
+            };
+          })
+          .filter((i) => i.text)
+          .slice(0, 5)
+      : [],
   };
 }
 
@@ -590,6 +641,22 @@ function compactGeminiError(status: number, body: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<string[]> {
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=50&order=relevance&key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!resp.ok) return [];
+    type CommentItem = { snippet?: { topLevelComment?: { snippet?: { textDisplay?: string } } } };
+    const data = await resp.json() as { items?: CommentItem[] };
+    return (data.items || [])
+      .map((item) => item?.snippet?.topLevelComment?.snippet?.textDisplay || "")
+      .filter(Boolean)
+      .slice(0, 50);
+  } catch {
+    return [];
+  }
 }
 
 function makeMockAnalysis(videoId: string) {
