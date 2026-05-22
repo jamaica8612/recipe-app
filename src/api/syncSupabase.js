@@ -254,6 +254,7 @@ export async function loadSupabaseDataIntoLocalState() {
         custom_notes,
         is_favorite,
         share_code,
+        comment_insights,
         created_at,
         recipe_ingredients(name,amount,unit,sort_order),
         recipe_steps(step_order,text,timestamp_sec),
@@ -332,6 +333,7 @@ export async function loadSupabaseDataIntoLocalState() {
         .filter(Boolean),
       remoteId: recipe.id,
       shareCode: recipe.share_code || null,
+      commentInsights: Array.isArray(recipe.comment_insights) ? recipe.comment_insights : [],
     };
   });
 
@@ -524,6 +526,9 @@ async function upsertRecipes(supabase, userId, recipes, categoryMap, memberMap) 
       cook_time_min: Number(recipe.cookTimeMin) || 0,
       custom_notes: recipe.tips?.join('\n') || null,
       is_favorite: Boolean(recipe.isFavorite),
+      comment_insights: Array.isArray(recipe.commentInsights) && recipe.commentInsights.length > 0
+        ? recipe.commentInsights
+        : [],
     }, { onConflict: 'user_id,source_local_id' }).select('id').single();
     if (recipeResult.error) throw recipeResult.error;
 

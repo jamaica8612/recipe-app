@@ -114,6 +114,21 @@ export function renderDetail(recipeId) {
           <div class="cook-steps">${raw(steps)}</div>
         </section>
         ${tips ? raw(`<section class="detail-section"><h3>Tip</h3><ul class="tip-list">${tips}</ul></section>`) : ''}
+        ${Array.isArray(recipe.commentInsights) && recipe.commentInsights.length > 0 ? raw(`
+          <section class="detail-section">
+            <div class="comment-insights">
+              <div class="comment-insights-title">💬 댓글 주요 의견</div>
+              <div class="comment-insights-list">
+                ${recipe.commentInsights.map((i) => `
+                  <div class="comment-insight-item">
+                    <span class="comment-insight-emoji">${esc(String(i.emoji || '💬'))}</span>
+                    <span class="comment-insight-text">${esc(String(i.text || ''))}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </section>
+        `) : ''}
         <section class="detail-section detail-actions">
           <button class="btn btn--primary btn--lg btn--block" data-action="start-cooking" type="button">${raw(icon('play', 15))} 조리 모드 시작</button>
           <div class="detail-sub-actions">
