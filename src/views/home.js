@@ -42,7 +42,7 @@ export function renderHome() {
         <button class="icon-btn ${s.filter.favoriteOnly ? 'is-primary' : ''}"
                 data-action="toggle-fav-filter"
                 title="즐겨찾기만 보기">${raw(icon('star', 18))}</button>
-        <button class="icon-btn" data-action="restore-supabase" title="Supabase에서 가져오기">${raw(icon('cloud', 18))}</button>
+        <button class="icon-btn" data-action="restore-supabase" title="클라우드에서 가져오기">${raw(icon('cloud', 18))}</button>
         <button class="icon-btn" data-action="open-account" title="계정">${raw(icon('user', 18))}</button>
         <button class="icon-btn" data-action="open-settings" title="설정">${raw(icon('settings', 18))}</button>
       </div>
@@ -76,7 +76,7 @@ function renderEmptyState(s) {
     <div class="empty">
       <span class="emo">🍳</span>
       <div class="ttl">아직 저장된 레시피가 없어요</div>
-      <div>아래 ＋ 버튼으로 유튜브 URL을 추가하거나, Supabase에 저장된 레시피를 가져오세요</div>
+      <div>아래 ＋ 버튼으로 유튜브 URL을 추가하거나, 클라우드에 저장된 레시피를 가져오세요</div>
       <div class="empty-actions">
         <button class="primary-btn" data-action="restore-supabase">저장된 레시피 가져오기</button>
         <button class="ghost-btn" data-action="go-analyze">유튜브 URL 추가</button>
@@ -223,20 +223,20 @@ export function bindHome(rootEl, navigate) {
 
 async function restoreFromSupabase(rootEl, button, navigate) {
   if (getState().recipes.length > 0) {
-    const ok = window.confirm('현재 로컬 목록을 Supabase에 저장된 목록으로 바꿀까요?');
+    const ok = window.confirm('현재 로컬 목록을 클라우드에 저장된 목록으로 바꿀까요?');
     if (!ok) return;
   }
 
   const status = rootEl.querySelector('[data-role="restore-status"]');
   button.disabled = true;
   button.textContent = '가져오는 중...';
-  if (status) status.textContent = 'Supabase에서 레시피와 구성원 정보를 불러오고 있어요.';
+  if (status) status.textContent = '클라우드에서 레시피와 구성원 정보를 불러오고 있어요.';
 
   try {
     const result = await loadSupabaseDataIntoLocalState();
     if (status) status.textContent = `${result.recipes}개 레시피를 가져왔어요.`;
   } catch (err) {
-    const message = err?.message || 'Supabase 데이터를 가져오지 못했어요.';
+    const message = err?.message || '클라우드 데이터를 가져오지 못했어요.';
     if (message.includes('로그인')) {
       if (status) status.textContent = '먼저 계정에서 로그인한 뒤 다시 가져올 수 있어요.';
       navigate('/account');
