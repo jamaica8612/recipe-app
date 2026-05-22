@@ -11,6 +11,8 @@ import { renderSettings, bindSettings } from './views/settings.js?v=20260521-ico
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
 import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v5';
+import { getSupabaseClient } from './supabaseClient.js';
+import { loadSupabaseDataIntoLocalState } from './api/syncSupabase.js';
 import { icon } from './icons.js';
 
 const app = document.querySelector('#app');
@@ -91,6 +93,50 @@ async function render(route = currentRoute()) {
   bind(app);
 }
 
-onRouteChange(render);
-subscribe(() => render(activeRoute));
-render();
+function showLoadingScreen(message = '불러오는 중…') {
+  app.className = 'app-shell no-nav';
+  app.innerHTML = `
+    <div class="app-content">
+      <main class="app-body">
+        <div class="loading-screen">
+          <div class="loading-dots">●●●</div>
+          <div class="loading-msg">${message}</div>
+        </div>
+      </main>
+    </div>
+  `;
+}
+
+async function init() {
+  // 로그인 상태 확인
+  let user = null;
+  try {
+    const { data } = await getSupabaseClient().auth.getUser();
+    user = data?.user || null;
+  } catch {
+    user = null;
+  }
+
+  // 로그인 안 됐으면 계정 화면으로
+  if (!user) {
+    await render({ path: 'account', params: [] });
+    onRouteChange(render);
+    subscribe(() => render(activeRoute));
+    return;
+  }
+
+  // 로그인됐으면 Supabase에서 데이터 로드
+  showLoadingScreen('레시피를 불러오는 중…');
+  try {
+    await loadSupabaseDataIntoLocalState();
+  } catch (err) {
+    console.warn('Supabase load failed', err);
+    // 로드 실패해도 빈 상태로 앱은 열림
+  }
+
+  onRouteChange(render);
+  subscribe(() => render(activeRoute));
+  render();
+}
+
+init();

@@ -305,15 +305,11 @@ export function bindPreview(rootEl, navigate, draftId) {
 
     if (savedRecipe) {
       try {
-        const remote = await saveRecipeToSupabase(savedRecipe);
-        if (status) {
-          status.textContent = remote.skipped
-            ? '로컬에 저장했습니다. 로그인하면 클라우드에도 백업할 수 있어요.'
-            : '저장했습니다.';
-        }
+        await saveRecipeToSupabase(savedRecipe);
+        if (status) status.textContent = '저장했습니다.';
       } catch (err) {
         console.warn('Supabase save failed', err);
-        if (status) status.textContent = '로컬에 저장했습니다. 계정 화면에서 다시 백업할 수 있어요.';
+        if (status) status.textContent = '저장에 실패했습니다. 네트워크 연결을 확인해주세요.';
       }
     }
 
