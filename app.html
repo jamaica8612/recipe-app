@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,700;8..60,900&family=Noto+Serif+KR:wght@500;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20260521-polish-v1">
+  <link rel="stylesheet" href="styles.css?v=20260522-shopping-v1">
   <style>
     /* 앱 전용 모바일 셸 (390px 기준 모바일 화면) */
     body { display: flex; justify-content: center;
@@ -969,6 +969,90 @@
       font-size: var(--t-xs);
       line-height: 1.35;
     }
+    .match-shop-btn {
+      margin-top: 6px;
+      font-size: var(--t-xs);
+      color: var(--c-terra);
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      text-align: left;
+      font-weight: 700;
+      line-height: 1.4;
+    }
+    .match-shop-btn:hover { text-decoration: underline; }
+
+    /* 냉장고 탭 */
+    .fridge-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--c-line);
+      margin-bottom: 2px;
+    }
+    .fridge-tab-btn {
+      flex: 1;
+      padding: 11px 8px;
+      border: none;
+      border-bottom: 2.5px solid transparent;
+      background: transparent;
+      color: var(--c-ink-3);
+      font-family: var(--f-sans);
+      font-size: var(--t-sm);
+      font-weight: 700;
+      cursor: pointer;
+      transition: color var(--m-fast), border-color var(--m-fast);
+      margin-bottom: -2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .fridge-tab-btn:hover { color: var(--c-ink); }
+    .fridge-tab-btn.is-active {
+      color: var(--c-terra);
+      border-bottom-color: var(--c-terra);
+    }
+    .fridge-tab-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      border-radius: var(--r-full);
+      background: var(--c-terra);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 0 5px;
+    }
+
+    /* 장보기 목록 */
+    .fridge-form--shopping {
+      display: flex;
+      flex-direction: row;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .fridge-form--shopping .field { flex: 1; margin: 0; }
+    .fridge-form--shopping .field-label { font-size: var(--t-2xs); }
+    .fridge-form--shopping .primary-btn { flex-shrink: 0; }
+    .shopping-list { display: flex; flex-direction: column; }
+    .shopping-item {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr) 28px;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 10px;
+      border-bottom: 1px solid var(--c-line);
+    }
+    .shopping-item:last-child { border-bottom: none; }
+    .shopping-item.is-done .shopping-item-name {
+      text-decoration: line-through;
+      color: var(--c-ink-3);
+    }
+    .shopping-check { accent-color: var(--c-terra); width: 18px; height: 18px; cursor: pointer; }
+    .shopping-item-name { font-size: var(--t-sm); font-weight: 600; color: var(--c-ink); }
 
     /* Loading screen */
     .loading-screen {

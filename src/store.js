@@ -31,6 +31,7 @@ function defaultFilter() {
     viewMode: 'category',
     fridgeFocusId: null,
     fridgeSort: 'expiry',
+    fridgeTab: 'stock',
   };
 }
 
@@ -61,6 +62,7 @@ function normalizeFridgeItems(items) {
       checked: Boolean(item?.checked),
       purchasedAt: normalizeDateValue(item?.purchasedAt || item?.purchased_at),
       expiresAt: normalizeDateValue(item?.expiresAt || item?.expires_at),
+      isShopping: Boolean(item?.isShopping || item?.is_shopping),
     }))
     .filter((item) => item.name);
 }
@@ -109,6 +111,10 @@ export function setFridgeFocusItem(id) {
 export function setFridgeSort(sort) {
   const next = sort === 'name' ? 'name' : 'expiry';
   set((s) => ({ ...s, filter: { ...s.filter, fridgeSort: next } }));
+}
+export function setFridgeTab(tab) {
+  const next = tab === 'shopping' ? 'shopping' : 'stock';
+  set((s) => ({ ...s, filter: { ...s.filter, fridgeTab: next } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({
@@ -226,7 +232,10 @@ export function addFridgeItem(input) {
   const clean = String(payload.name || '').trim();
   if (!clean) return null;
 
-  const exists = state.fridgeItems.some((item) => item.name.toLowerCase() === clean.toLowerCase());
+  // 재고 탭에서는 같은 이름 중복 체크 (장보기 탭에는 허용)
+  const exists = state.fridgeItems.some(
+    (item) => !item.isShopping && item.name.toLowerCase() === clean.toLowerCase(),
+  );
   if (exists) return null;
 
   const id = 'fi' + (Date.now() % 1e8).toString(36);
@@ -238,9 +247,47 @@ export function addFridgeItem(input) {
       checked: true,
       purchasedAt: normalizeDateValue(payload.purchasedAt),
       expiresAt: normalizeDateValue(payload.expiresAt),
+      isShopping: false,
     }],
   }));
   return id;
+}
+
+export function addShoppingItem(name) {
+  const clean = String(name || '').trim();
+  if (!clean) return null;
+
+  // 이미 장보기에 같은 이름이 있으면 중복 추가 안 함
+  const exists = state.fridgeItems.some(
+    (item) => item.isShopping && item.name.toLowerCase() === clean.toLowerCase(),
+  );
+  if (exists) return null;
+
+  const id = 'fi' + (Date.now() % 1e8).toString(36);
+  set((s) => ({
+    ...s,
+    fridgeItems: [...(s.fridgeItems || []), {
+      id,
+      name: clean,
+      checked: false,
+      purchasedAt: '',
+      expiresAt: '',
+      isShopping: true,
+    }],
+  }));
+  return id;
+}
+
+export function moveShoppingToFridge(id) {
+  const today = new Date().toISOString().slice(0, 10);
+  set((s) => ({
+    ...s,
+    fridgeItems: (s.fridgeItems || []).map((item) =>
+      item.id === id
+        ? { ...item, isShopping: false, checked: true, purchasedAt: today }
+        : item,
+    ),
+  }));
 }
 
 export function updateFridgeItem(id, patch) {
@@ -286,7 +333,7 @@ export function replaceLibrary({ members, recipes, categories, fridgeItems }) {
     members: members || [],
     recipes: recipes || [],
     categories: categories || s.categories,
-    fridgeItems: Array.isArray(fridgeItems) ? fridgeItems : (s.fridgeItems || []),
+    fridgeItems: Array.isArray(fridgeItems) ? normalizeFridgeItems(fridgeItems) : (s.fridgeItems || []),
     filter: { ...defaultFilter(), ...loadFilterFromStorage() },
   }));
 }

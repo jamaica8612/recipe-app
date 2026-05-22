@@ -10,7 +10,7 @@ import { renderMembers, bindMembers } from './views/members.js';
 import { renderSettings, bindSettings } from './views/settings.js?v=20260521-icons-v1';
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
-import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v5';
+import { renderFridge, bindFridge } from './views/fridge.js?v=20260522-shopping-v1';
 import { getSupabaseClient } from './supabaseClient.js';
 import { loadSupabaseDataIntoLocalState } from './api/syncSupabase.js';
 import { icon } from './icons.js';

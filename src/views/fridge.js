@@ -1,11 +1,14 @@
-// 냉장고 — 가진 재료를 기준으로 만들 수 있는 레시피 추천
+// 냉장고 — 재고 관리 + 장보기 목록 + 레시피 추천
 import { html, raw, ytThumbnail } from '../util.js';
 import {
   addFridgeItem,
+  addShoppingItem,
   deleteFridgeItem,
   getState,
+  moveShoppingToFridge,
   setFridgeFocusItem,
   setFridgeSort,
+  setFridgeTab,
   toggleFridgeItem,
 } from '../store.js';
 import { deleteFridgeItemFromSupabase, syncFridgeItemToSupabase } from '../api/syncSupabase.js';
@@ -14,12 +17,19 @@ import { hasFuzzyOverlap, makeIngredientTerms } from '../ingredientMatch.js';
 
 export function renderFridge() {
   const s = getState();
-  const items = s.fridgeItems || [];
+  const allItems = s.fridgeItems || [];
+  const fridgeTab = s.filter.fridgeTab || 'stock';
   const fridgeSort = s.filter.fridgeSort || 'expiry';
-  const focusedItem = items.find((item) => item.id === s.filter.fridgeFocusId);
-  const activeItems = focusedItem ? [focusedItem] : items.filter((item) => item.checked);
+
+  const stockItems = allItems.filter((item) => !item.isShopping);
+  const shoppingItems = allItems.filter((item) => item.isShopping);
+
+  const focusedItem = stockItems.find((item) => item.id === s.filter.fridgeFocusId);
+  const activeItems = focusedItem ? [focusedItem] : stockItems.filter((item) => item.checked);
   const matches = rankRecipesByFridge(s.recipes || [], activeItems);
-  const urgentCount = items.filter((item) => getExpiryState(item).tone === 'danger' || getExpiryState(item).tone === 'warn').length;
+  const urgentCount = stockItems.filter(
+    (item) => getExpiryState(item).tone === 'danger' || getExpiryState(item).tone === 'warn',
+  ).length;
 
   return {
     header: html`
@@ -27,52 +37,125 @@ export function renderFridge() {
       <div style="width:36px"></div>
     `,
     body: html`
-      <form class="fridge-form" data-action="add-fridge-item">
-        <label class="field">
-          <span class="field-label">재료</span>
-          <input class="input" name="ingredient" autocomplete="off"
-                 placeholder="있는 재료 입력: 두부, 대파, 양파..." />
-        </label>
-        <label class="field">
-          <span class="field-label">입고일</span>
-          <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
-        </label>
-        <label class="field">
-          <span class="field-label">유통기한</span>
-          <input class="input" name="expiresAt" type="date" />
-        </label>
-        <button class="primary-btn" type="submit">추가</button>
-      </form>
+      <div class="fridge-tabs">
+        <button class="fridge-tab-btn ${fridgeTab === 'stock' ? 'is-active' : ''}"
+          type="button" data-action="set-fridge-tab" data-tab="stock">
+          🧊 재고
+        </button>
+        <button class="fridge-tab-btn ${fridgeTab === 'shopping' ? 'is-active' : ''}"
+          type="button" data-action="set-fridge-tab" data-tab="shopping">
+          🛒 장보기${shoppingItems.length ? raw(` <span class="fridge-tab-badge">${shoppingItems.length}</span>`) : ''}
+        </button>
+      </div>
 
-      <section class="fridge-section">
-        <div class="section-row">
-          <div>
-            <h2 class="section-title">있는 재료</h2>
-            <p class="section-note">${urgentCount ? `임박/만료 ${urgentCount}개 먼저 확인하세요` : '재료를 누르면 그 재료로 만들 수 있는 레시피를 보여줘요'}</p>
-          </div>
-        </div>
-        <div class="fridge-sort" aria-label="냉장고 정렬">
-          <button type="button" data-action="set-fridge-sort" data-sort="expiry" class="${fridgeSort === 'expiry' ? 'is-on' : ''}">유통기한순</button>
-          <button type="button" data-action="set-fridge-sort" data-sort="name" class="${fridgeSort === 'name' ? 'is-on' : ''}">이름순</button>
-        </div>
-        ${raw(renderFridgeItems(items, focusedItem?.id, fridgeSort))}
-      </section>
-
-      <section class="fridge-section">
-        <div class="section-row">
-          <div>
-            <h2 class="section-title">${focusedItem ? `${focusedItem.name}로 만들 수 있는 것` : '오늘 만들 수 있는 것'}</h2>
-            <p class="section-note">${activeItems.length ? `${activeItems.length}개 재료 기준` : '재료를 추가하면 추천이 떠요'}</p>
-          </div>
-          ${focusedItem ? raw(`<button class="ghost-btn fridge-clear-focus" type="button" data-action="clear-fridge-focus">전체 보기</button>`) : ''}
-        </div>
-        ${raw(renderMatches(matches, activeItems))}
-      </section>
+      ${raw(fridgeTab === 'stock'
+    ? renderStockTab(stockItems, focusedItem, fridgeSort, urgentCount, matches, activeItems, s.recipes || [])
+    : renderShoppingTab(shoppingItems)
+  )}
     `,
     flush: false,
     showNav: true,
     activeNav: 'fridge',
   };
+}
+
+function renderStockTab(stockItems, focusedItem, fridgeSort, urgentCount, matches, activeItems, allRecipes) {
+  return html`
+    <form class="fridge-form" data-action="add-fridge-item">
+      <label class="field">
+        <span class="field-label">재료</span>
+        <input class="input" name="ingredient" autocomplete="off"
+               placeholder="있는 재료 입력: 두부, 대파, 양파..." />
+      </label>
+      <label class="field">
+        <span class="field-label">입고일</span>
+        <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
+      </label>
+      <label class="field">
+        <span class="field-label">유통기한</span>
+        <input class="input" name="expiresAt" type="date" />
+      </label>
+      <button class="primary-btn" type="submit">추가</button>
+    </form>
+
+    <section class="fridge-section">
+      <div class="section-row">
+        <div>
+          <h2 class="section-title">있는 재료</h2>
+          <p class="section-note">${urgentCount ? `임박/만료 ${urgentCount}개 먼저 확인하세요` : '재료를 누르면 그 재료로 만들 수 있는 레시피를 보여줘요'}</p>
+        </div>
+      </div>
+      <div class="fridge-sort" aria-label="냉장고 정렬">
+        <button type="button" data-action="set-fridge-sort" data-sort="expiry" class="${fridgeSort === 'expiry' ? 'is-on' : ''}">유통기한순</button>
+        <button type="button" data-action="set-fridge-sort" data-sort="name" class="${fridgeSort === 'name' ? 'is-on' : ''}">이름순</button>
+      </div>
+      ${raw(renderFridgeItems(stockItems, focusedItem?.id, fridgeSort))}
+    </section>
+
+    <section class="fridge-section">
+      <div class="section-row">
+        <div>
+          <h2 class="section-title">${focusedItem ? `${focusedItem.name}로 만들 수 있는 것` : '오늘 만들 수 있는 것'}</h2>
+          <p class="section-note">${activeItems.length ? `${activeItems.length}개 재료 기준` : '재료를 추가하면 추천이 떠요'}</p>
+        </div>
+        ${focusedItem ? raw(`<button class="ghost-btn fridge-clear-focus" type="button" data-action="clear-fridge-focus">전체 보기</button>`) : ''}
+      </div>
+      ${raw(renderMatches(matches, activeItems, activeItems))}
+    </section>
+  `;
+}
+
+function renderShoppingTab(shoppingItems) {
+  return html`
+    <form class="fridge-form fridge-form--shopping" data-action="add-shopping-item">
+      <label class="field" style="flex:1">
+        <span class="field-label">살 재료</span>
+        <input class="input" name="ingredient" autocomplete="off"
+               placeholder="살 재료 이름 입력..." />
+      </label>
+      <button class="primary-btn" type="submit">추가</button>
+    </form>
+
+    <section class="fridge-section">
+      <div class="section-row">
+        <div>
+          <h2 class="section-title">장보기 목록</h2>
+          <p class="section-note">구매 완료하면 자동으로 냉장고 재고로 이동돼요</p>
+        </div>
+      </div>
+      ${raw(renderShoppingList(shoppingItems))}
+    </section>
+  `;
+}
+
+function renderShoppingList(items) {
+  if (!items.length) {
+    return html`
+      <div class="empty mini-empty">
+        <span class="emo">🛒</span>
+        <div class="ttl">장보기 목록이 비어있어요</div>
+        <div>살 재료를 추가하거나, 레시피 추천에서 부족한 재료를 담아보세요</div>
+      </div>
+    `;
+  }
+
+  return html`
+    <div class="shopping-list">
+      ${raw(items.map((item) => renderShoppingItem(item)).join(''))}
+    </div>
+  `;
+}
+
+function renderShoppingItem(item) {
+  return html`
+    <div class="shopping-item ${item.checked ? 'is-done' : ''}">
+      <input type="checkbox" class="shopping-check" data-action="buy-shopping-item"
+             data-id="${item.id}" ${item.checked ? 'checked' : ''} aria-label="${item.name} 구매 완료" />
+      <span class="shopping-item-name">${item.name}</span>
+      <button class="fridge-delete" type="button" data-action="delete-fridge-item"
+              data-id="${item.id}" title="삭제">×</button>
+    </div>
+  `;
 }
 
 function renderFridgeItems(items, focusedId, sortMode) {
@@ -136,15 +219,16 @@ function renderMatches(matches, activeItems) {
 
   return html`
     <div class="stack">
-      ${raw(matches.map(({ recipe, matched, total, ratio }) => renderMatchCard(recipe, matched, total, ratio)).join(''))}
+      ${raw(matches.map(({ recipe, matched, total, ratio, missing }) => renderMatchCard(recipe, matched, total, ratio, missing)).join(''))}
     </div>
   `;
 }
 
-function renderMatchCard(recipe, matched, total, ratio) {
+function renderMatchCard(recipe, matched, total, ratio, missing) {
   const thumb = ytThumbnail(recipe.videoId);
   const thumbStyle = thumb ? `background-image:url('${thumb}')` : '';
   const percent = Math.round(ratio * 100);
+  const missingNames = (missing || []).slice(0, 4);
   return html`
     <div class="recipe-card fridge-match" data-action="open-recipe" data-id="${recipe.id}">
       <div class="thumb" style="${raw(thumbStyle)}"></div>
@@ -153,6 +237,14 @@ function renderMatchCard(recipe, matched, total, ratio) {
         <div class="sub">${matched.length}/${total}개 재료 있음 · ${matched.map((item) => item.name).join(', ')}</div>
         ${matched.some((item) => item.via) ? raw(`<div class="match-alias">비슷한 재료 포함: ${matched.filter((item) => item.via).map((item) => `${item.via}→${item.name}`).join(', ')}</div>`) : ''}
         <div class="match-track"><span style="width:${percent}%"></span></div>
+        ${missingNames.length ? raw(`
+          <button class="match-shop-btn" type="button"
+            data-action="add-missing-to-shopping"
+            data-missing="${missingNames.join(',')}"
+            data-recipe-id="${recipe.id}">
+            🛒 ${missingNames.join(', ')} 장보기 추가
+          </button>
+        `) : ''}
       </div>
     </div>
   `;
@@ -173,10 +265,15 @@ function rankRecipesByFridge(recipes, activeItems) {
         .map((name) => matchIngredient(name, fridgeTerms))
         .filter(Boolean);
       const uniqueMatched = dedupeMatches(matched);
+      const matchedNames = new Set(uniqueMatched.map((m) => makeIngredientTerms(m.name).canonical));
+      const missing = ingredients
+        .filter((name) => !matchIngredient(name, fridgeTerms))
+        .slice(0, 5);
       const total = Math.max(ingredients.length, 1);
       return {
         recipe,
         matched: uniqueMatched,
+        missing,
         total,
         ratio: uniqueMatched.length / total,
       };
@@ -218,19 +315,31 @@ function dedupeMatches(matches) {
 
 export function bindFridge(rootEl, navigate) {
   rootEl.addEventListener('submit', (e) => {
-    const form = e.target.closest('[data-action="add-fridge-item"]');
+    const form = e.target.closest('[data-action]');
     if (!form) return;
     e.preventDefault();
-    const input = form.elements.ingredient;
-    const id = addFridgeItem({
-      name: input.value,
-      purchasedAt: form.elements.purchasedAt?.value,
-      expiresAt: form.elements.expiresAt?.value,
-    });
-    if (id) {
-      input.value = '';
-      if (form.elements.expiresAt) form.elements.expiresAt.value = '';
-      persistFridgeItem(id);
+
+    if (form.dataset.action === 'add-fridge-item') {
+      const input = form.elements.ingredient;
+      const id = addFridgeItem({
+        name: input.value,
+        purchasedAt: form.elements.purchasedAt?.value,
+        expiresAt: form.elements.expiresAt?.value,
+      });
+      if (id) {
+        input.value = '';
+        if (form.elements.expiresAt) form.elements.expiresAt.value = '';
+        persistFridgeItem(id);
+      }
+    }
+
+    if (form.dataset.action === 'add-shopping-item') {
+      const input = form.elements.ingredient;
+      const id = addShoppingItem(input.value);
+      if (id) {
+        input.value = '';
+        persistFridgeItem(id);
+      }
     }
   });
 
@@ -240,6 +349,7 @@ export function bindFridge(rootEl, navigate) {
 
     const action = target.dataset.action;
     const id = target.dataset.id;
+
     if (action === 'delete-fridge-item') {
       e.preventDefault();
       deleteFridgeItem(id);
@@ -252,16 +362,41 @@ export function bindFridge(rootEl, navigate) {
       setFridgeFocusItem(null);
     } else if (action === 'set-fridge-sort') {
       setFridgeSort(target.dataset.sort);
+    } else if (action === 'set-fridge-tab') {
+      setFridgeTab(target.dataset.tab);
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
+    } else if (action === 'add-missing-to-shopping') {
+      e.stopPropagation();
+      const missing = (target.dataset.missing || '').split(',').map((s) => s.trim()).filter(Boolean);
+      let addedCount = 0;
+      for (const name of missing) {
+        const newId = addShoppingItem(name);
+        if (newId) {
+          persistFridgeItem(newId);
+          addedCount++;
+        }
+      }
+      if (addedCount > 0) {
+        setFridgeTab('shopping');
+      }
     }
   });
 
   rootEl.addEventListener('change', (e) => {
-    const target = e.target.closest('[data-action="toggle-fridge-item"]');
-    if (target) {
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
+
+    if (target.dataset.action === 'toggle-fridge-item') {
       toggleFridgeItem(target.dataset.id);
       persistFridgeItem(target.dataset.id);
+    } else if (target.dataset.action === 'buy-shopping-item') {
+      // 장보기 체크 → 냉장고 재고로 이동
+      const itemId = target.dataset.id;
+      moveShoppingToFridge(itemId);
+      persistFridgeItem(itemId);
+      // 잠깐 후 재고 탭으로 이동 (시각적 피드백)
+      setTimeout(() => setFridgeTab('stock'), 600);
     }
   });
 }
