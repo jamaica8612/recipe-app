@@ -32,8 +32,8 @@ export function renderAnalyze() {
       <div id="analyze-status"></div>
     `,
     flush: false,
-    showNav: false,
-    activeNav: null,
+    showNav: true,
+    activeNav: 'analyze',
   };
 }
 

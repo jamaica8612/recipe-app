@@ -30,6 +30,15 @@
       min-height: calc(100vh - 48px);
       max-height: calc(100vh - 48px);
     }
+    .app-content {
+      order: 1;
+      min-width: 0;
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .app-side { display: none; }
     .app-header {
       padding: 14px 16px 12px;
       border-bottom: 1px solid var(--c-line);
@@ -84,6 +93,7 @@
     }
     .app-body.is-flush { padding: 0; }
     .app-bottom {
+      order: 2;
       border-top: 1px solid var(--c-line);
       padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
       background: var(--c-surface);
@@ -116,6 +126,101 @@
       margin: 0 auto;
     }
     .nav-row a.fab .ic { font-size: 22px; }
+    .nav-row a.fab span:not(.ic) { display: none; }
+
+    @media (min-width: 900px) {
+      body {
+        padding: 24px;
+        align-items: stretch;
+      }
+      .app-shell {
+        max-width: 1120px;
+        border-radius: 24px;
+        flex-direction: row;
+      }
+      .app-shell.no-nav { max-width: 760px; }
+      .app-side {
+        order: 0;
+        flex: 0 0 224px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 22px 14px;
+        border-right: 1px solid var(--c-line);
+        background: var(--c-surface-2);
+      }
+      .app-bottom { display: none; }
+      .app-content { order: 1; }
+      .app-body { padding: 22px 28px 30px; }
+      .side-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 8px 10px;
+        color: var(--c-ink);
+        font-family: var(--f-serif);
+        font-weight: 900;
+        font-size: 1.25rem;
+        line-height: 1.1;
+      }
+      .side-brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: var(--r-md);
+        background: var(--c-terra);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .side-nav {
+        display: grid;
+        gap: 6px;
+      }
+      .side-nav a {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 10px 12px;
+        border-radius: var(--r-md);
+        color: var(--c-ink-2);
+        font-size: var(--t-sm);
+        font-weight: 700;
+        text-decoration: none;
+        transition: background var(--m-fast), color var(--m-fast);
+      }
+      .side-nav a:hover {
+        background: var(--c-surface-3);
+        color: var(--c-ink);
+      }
+      .side-nav a .ic {
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--c-ink-3);
+        flex-shrink: 0;
+      }
+      .side-nav a.is-active {
+        background: var(--c-terra-soft);
+        color: var(--c-terra);
+      }
+      .side-nav a.is-active .ic { color: var(--c-terra); }
+      .side-nav a.fab {
+        background: var(--c-terra);
+        color: #fff;
+        box-shadow: var(--e-1);
+      }
+      .side-nav a.fab .ic { color: #fff; }
+      .side-nav a.fab.is-active,
+      .side-nav a.fab:hover {
+        background: var(--c-terra-2);
+        color: #fff;
+      }
+    }
 
     /* 페이지 공통 헤더 */
     .page-title {
@@ -888,7 +993,7 @@
     <!-- 뷰가 여기에 렌더링됨 -->
   </div>
 
-  <script type="module" src="src/app.js?v=20260521-simplify-v1"></script>
+  <script type="module" src="src/app.js?v=20260522-desktop-menu-v1"></script>
   <script>
     // PWA 서비스 워커 등록 (오프라인 + 홈화면 추가 가능)
     if ('serviceWorker' in navigator && location.protocol !== 'file:') {
