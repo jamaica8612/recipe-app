@@ -3,10 +3,11 @@
 import { html, raw, ytThumbnail } from '../util.js';
 import {
   getState, getFilteredRecipes,
-  setSearchQuery, toggleFavoriteFilter, toggleFavorite, setViewMode,
+  setSearchQuery, toggleFavoriteFilter, toggleFavorite, setViewMode, setSituationFilter,
 } from '../store.js';
 import { loadSupabaseDataIntoLocalState, syncRecipeToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
+import { SITUATION_TAGS } from '../data.js';
 
 const VIEW_MODES = [
   { id: 'category',  label: '카테고리', iconName: 'tag' },
@@ -52,6 +53,17 @@ export function renderHome() {
         <input class="input" id="recipe-search" value="${s.filter.query || ''}"
                placeholder="레시피, 재료, 팁 검색" />
       </label>
+      <div class="situation-pills">
+        ${raw([
+          { id: '', icon: '🍽️', name: '전체' },
+          ...SITUATION_TAGS,
+        ].map((tag) => html`
+          <button class="situation-pill ${!tag.id && !s.filter.situationTagId ? 'is-on' : tag.id && s.filter.situationTagId === tag.id ? 'is-on' : ''}"
+                  data-action="set-situation" data-id="${tag.id}">
+            <span>${tag.icon}</span><span>${tag.name}</span>
+          </button>
+        `).join(''))}
+      </div>
       <div class="view-seg">${raw(segments)}</div>
       <div class="groups">${raw(groupsHtml)}</div>
     `,
@@ -198,7 +210,8 @@ export function bindHome(rootEl, navigate) {
     if (!target) return;
     const action = target.dataset.action;
     const id = target.dataset.id;
-    if (action === 'set-view') setViewMode(id);
+    if (action === 'set-situation') setSituationFilter(id || null);
+    else if (action === 'set-view') setViewMode(id);
     else if (action === 'toggle-fav-filter') toggleFavoriteFilter();
     else if (action === 'open-account') navigate('/account');
     else if (action === 'open-settings') navigate('/settings');

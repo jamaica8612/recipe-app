@@ -31,7 +31,7 @@ function defaultState() {
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry' },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry', situationTagId: null },
   };
 }
 
@@ -316,9 +316,16 @@ export function getFilteredRecipes() {
     if (filter.categoryId !== 'all' && r.categoryId !== filter.categoryId) return false;
     if (filter.memberId && !r.memberIds.includes(filter.memberId)) return false;
     if (filter.favoriteOnly && !r.isFavorite) return false;
+    if (filter.situationTagId && !(r.situationTagIds || []).includes(filter.situationTagId)) return false;
     if (query && !recipeMatchesQuery(r, query)) return false;
     return true;
   });
+}
+
+export function setSituationFilter(tagId) {
+  // 같은 태그 다시 누르면 해제
+  const next = state.filter.situationTagId === tagId ? null : (tagId || null);
+  set((s) => ({ ...s, filter: { ...s.filter, situationTagId: next } }));
 }
 
 function recipeMatchesQuery(recipe, query) {

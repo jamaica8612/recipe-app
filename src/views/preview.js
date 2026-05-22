@@ -2,6 +2,7 @@ import { esc, html, raw, parseLines } from '../util.js';
 import { getState, getAnalysisDraft, saveDraftAsRecipe } from '../store.js';
 import { reportAnalysis } from '../api/analyzeVideo.js';
 import { saveRecipeToSupabase } from '../api/syncSupabase.js';
+import { SITUATION_TAGS } from '../data.js';
 
 function ingredientRows(items = []) {
   const rows = items.length ? items : [{ name: '', amount: '', unit: '' }];
@@ -89,7 +90,7 @@ function readRecipeFromForm(form, draft) {
     cookTimeMin: Number(form.cookTimeMin.value) || 0,
     servings: Number(form.servings.value) || 1,
     memberIds,
-    situationTagIds: [],
+    situationTagIds: Array.from(form.querySelectorAll('input[name="situationTagIds"]:checked')).map((el) => el.value),
     videoId: draft.videoId,
     ingredients,
     steps,
@@ -232,6 +233,17 @@ export function renderPreview(draftId) {
           <span class="field-label">팁</span>
           <textarea class="textarea" name="tips" rows="3" placeholder="팁을 한 줄씩 입력">${tipText(analysis.tips)}</textarea>
         </label>
+
+        <div class="field">
+          <span class="field-label">상황</span>
+          <div class="check-chip-row">${raw(SITUATION_TAGS.map((tag) => html`
+            <label class="check-chip">
+              <input type="checkbox" name="situationTagIds" value="${tag.id}" ${(analysis.situationTagIds || []).includes(tag.id) ? raw('checked') : ''} />
+              <span>${tag.icon} ${tag.name}</span>
+            </label>
+          `).join(''))}</div>
+          <div class="field-help">AI가 자동 분류했습니다. 저장 전 직접 고칠 수 있어요</div>
+        </div>
 
         <div class="field">
           <span class="field-label">좋아할 구성원</span>

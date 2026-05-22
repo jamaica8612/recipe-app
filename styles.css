@@ -353,7 +353,27 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .stack > * + * { margin-top: var(--s-3); }
 
 /* =========================================================
-   12. FRIDGE AI SUGGEST
+   12. SITUATION PILLS (홈 상황별 필터)
+   ========================================================= */
+.situation-pills {
+  display: flex; gap: 6px; overflow-x: auto;
+  padding: 2px 0 10px; margin-bottom: 4px;
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.situation-pills::-webkit-scrollbar { display: none; }
+.situation-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 12px; border-radius: 99px; white-space: nowrap; flex-shrink: 0;
+  font-size: var(--t-xs); font-weight: 600;
+  border: 1.5px solid var(--c-line-2);
+  background: var(--c-surface); color: var(--c-ink-2);
+  cursor: pointer; transition: all var(--m-fast);
+}
+.situation-pill:hover { border-color: var(--c-terra); color: var(--c-terra); }
+.situation-pill.is-on { background: var(--c-terra); color: #fff; border-color: var(--c-terra); }
+
+/* =========================================================
+   14. FRIDGE AI SUGGEST
    ========================================================= */
 .ai-suggest-row { margin-top: 12px; display: flex; justify-content: center; }
 .ai-suggest-btn {
@@ -400,7 +420,7 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .fridge-match.is-ai-pick { border-color: var(--c-terra); box-shadow: 0 0 0 2px var(--c-terra-soft); }
 
 /* =========================================================
-   13. RECIPE CHAT (Q&A)
+   15. RECIPE CHAT (Q&A)
    ========================================================= */
 .recipe-chat-section { padding-bottom: 0 !important; }
 .recipe-chat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

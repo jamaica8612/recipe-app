@@ -1,6 +1,7 @@
 import { esc, html, raw, parseLines } from '../util.js';
 import { getState, setFlash, updateRecipe } from '../store.js';
 import { syncRecipeToSupabase } from '../api/syncSupabase.js';
+import { SITUATION_TAGS } from '../data.js';
 
 function ingredientRow(item = {}) {
   return `
@@ -121,6 +122,16 @@ export function renderEditRecipe(recipeId) {
         </label>
 
         <div class="field">
+          <span class="field-label">상황</span>
+          <div class="check-chip-row">${raw(SITUATION_TAGS.map((tag) => html`
+            <label class="check-chip">
+              <input type="checkbox" name="situationTagIds" value="${tag.id}" ${(recipe.situationTagIds || []).includes(tag.id) ? raw('checked') : ''} />
+              <span>${tag.icon} ${tag.name}</span>
+            </label>
+          `).join(''))}</div>
+        </div>
+
+        <div class="field">
           <span class="field-label">좋아할 구성원</span>
           <div class="check-chip-row">${raw(memberChips)}</div>
         </div>
@@ -212,7 +223,7 @@ function readPatch(form) {
     cookTimeMin: Number(form.cookTimeMin.value) || 0,
     servings: Number(form.servings.value) || 1,
     memberIds,
-    situationTagIds: [],
+    situationTagIds: Array.from(form.querySelectorAll('input[name="situationTagIds"]:checked')).map((el) => el.value),
     ingredients,
     steps,
     tips: parseLines(form.tips.value),
