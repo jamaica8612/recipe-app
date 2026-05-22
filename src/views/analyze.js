@@ -83,10 +83,14 @@ export function bindAnalyze(rootEl, navigate) {
     }
   });
 
-  // 공유 인텐트로 들어왔을 때 URL이 query string에 있다면 자동 채우기
+  // 공유 인텐트로 들어왔을 때 자동 채우기
+  // 1) sessionStorage: manifest share_target → app.js → navigate('/analyze') 경로
+  // 2) query string: 직접 URL로 들어온 경우 (fallback)
+  const storedUrl = sessionStorage.getItem('recipe-app:share-url');
   const params = new URLSearchParams(location.search);
-  const shared = normalizeSharedInput(params.get('url') || params.get('v'));
+  const shared = normalizeSharedInput(storedUrl || params.get('url') || params.get('v'));
   if (shared) {
+    if (storedUrl) sessionStorage.removeItem('recipe-app:share-url');
     const input = rootEl.querySelector('#yt-url');
     if (input) {
       input.value = shared;
