@@ -353,7 +353,54 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .stack > * + * { margin-top: var(--s-3); }
 
 /* =========================================================
-   12. RECIPE CHAT (Q&A)
+   12. FRIDGE AI SUGGEST
+   ========================================================= */
+.ai-suggest-row { margin-top: 12px; display: flex; justify-content: center; }
+.ai-suggest-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: 99px;
+  background: var(--c-surface); border: 1.5px solid var(--c-terra);
+  color: var(--c-terra); font-size: var(--t-sm); font-weight: 600;
+  cursor: pointer; transition: background var(--m-fast);
+}
+.ai-suggest-btn:hover { background: var(--c-terra-soft); }
+.ai-suggest-btn:disabled { opacity: .5; cursor: default; }
+
+.ai-suggest-result {
+  margin-top: 12px; border-radius: var(--r-md);
+  border: 1px solid var(--c-line); overflow: hidden;
+}
+.ai-suggest-result.is-loading,
+.ai-suggest-result.is-error {
+  padding: 14px 16px; font-size: var(--t-sm); color: var(--c-ink-3);
+}
+.ai-suggest-result.is-error { color: var(--c-danger); background: var(--c-danger-soft); }
+.ai-suggest-dots { font-style: italic; }
+
+.ai-suggest-bubble {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 14px 16px; background: var(--c-surface-2);
+}
+.ai-suggest-avatar { font-size: 1.25rem; flex-shrink: 0; line-height: 1.4; }
+.ai-suggest-text { font-size: var(--t-sm); line-height: 1.65; color: var(--c-ink-2); flex: 1; }
+
+.ai-suggest-links {
+  padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 6px;
+  border-top: 1px solid var(--c-line); background: var(--c-surface);
+}
+.ai-recipe-link {
+  text-align: left; padding: 8px 12px; border-radius: var(--r-sm);
+  background: var(--c-terra-soft); color: var(--c-terra);
+  font-size: var(--t-sm); font-weight: 600; border: none; cursor: pointer;
+  transition: background var(--m-fast);
+}
+.ai-recipe-link:hover { background: #eac9be; }
+
+/* AI가 추천한 레시피 카드 하이라이트 */
+.fridge-match.is-ai-pick { border-color: var(--c-terra); box-shadow: 0 0 0 2px var(--c-terra-soft); }
+
+/* =========================================================
+   13. RECIPE CHAT (Q&A)
    ========================================================= */
 .recipe-chat-section { padding-bottom: 0 !important; }
 .recipe-chat-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }

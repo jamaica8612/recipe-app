@@ -11,6 +11,7 @@ import {
 import { deleteFridgeItemFromSupabase, syncFridgeItemToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
 import { hasFuzzyOverlap, makeIngredientTerms } from '../ingredientMatch.js';
+import { suggestRecipes } from '../api/suggestRecipes.js';
 
 export function renderFridge() {
   const s = getState();
@@ -67,6 +68,14 @@ export function renderFridge() {
           ${focusedItem ? raw(`<button class="ghost-btn fridge-clear-focus" type="button" data-action="clear-fridge-focus">전체 보기</button>`) : ''}
         </div>
         ${raw(renderMatches(matches, activeItems))}
+        ${activeItems.length ? raw(`
+          <div class="ai-suggest-row">
+            <button class="ai-suggest-btn" type="button" data-action="ai-suggest">
+              ${icon('book', 15)} AI에게 오늘 메뉴 물어보기
+            </button>
+          </div>
+          <div class="ai-suggest-result" id="ai-suggest-result" hidden></div>
+        `) : ''}
       </section>
     `,
     flush: false,
@@ -217,7 +226,7 @@ function dedupeMatches(matches) {
 }
 
 export function bindFridge(rootEl, navigate) {
-  rootEl.addEventListener('submit', (e) => {
+  rootEl.addEventListener('submit', async (e) => {
     const form = e.target.closest('[data-action="add-fridge-item"]');
     if (!form) return;
     e.preventDefault();
@@ -254,6 +263,8 @@ export function bindFridge(rootEl, navigate) {
       setFridgeSort(target.dataset.sort);
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
+    } else if (action === 'ai-suggest') {
+      await handleAiSuggest(rootEl, navigate);
     }
   });
 
@@ -264,6 +275,74 @@ export function bindFridge(rootEl, navigate) {
       persistFridgeItem(target.dataset.id);
     }
   });
+}
+
+async function handleAiSuggest(rootEl, navigate) {
+  const s = getState();
+  const items = s.fridgeItems || [];
+  const focusedItem = items.find((item) => item.id === s.filter.fridgeFocusId);
+  const activeItems = focusedItem ? [focusedItem] : items.filter((item) => item.checked);
+
+  const resultEl = rootEl.querySelector('#ai-suggest-result');
+  const btn = rootEl.querySelector('[data-action="ai-suggest"]');
+  if (!resultEl || !activeItems.length) return;
+
+  // 로딩 상태
+  resultEl.hidden = false;
+  resultEl.className = 'ai-suggest-result is-loading';
+  resultEl.innerHTML = '<span class="ai-suggest-dots">AI가 오늘의 메뉴를 고르는 중…</span>';
+  if (btn) btn.disabled = true;
+
+  const fridgeItemNames = activeItems.map((i) => i.name);
+  const recipeSnippets = (s.recipes || []).slice(0, 20).map((r) => ({
+    id: r.id,
+    title: r.title,
+    ingredients: (r.ingredients || []).map((ing) => ing.name).filter(Boolean),
+  }));
+
+  const result = await suggestRecipes({ fridgeItems: fridgeItemNames, recipes: recipeSnippets });
+
+  if (btn) btn.disabled = false;
+
+  if (!result.ok) {
+    resultEl.className = 'ai-suggest-result is-error';
+    resultEl.innerHTML = `<span>${result.error || '추천 실패'}</span>`;
+    return;
+  }
+
+  // 추천 레시피 ID 하이라이트
+  const recommendedIds = result.recommendedIds || [];
+  if (recommendedIds.length) {
+    rootEl.querySelectorAll('.fridge-match[data-id]').forEach((card) => {
+      card.classList.toggle('is-ai-pick', recommendedIds.includes(card.dataset.id));
+    });
+  }
+
+  resultEl.className = 'ai-suggest-result';
+  resultEl.innerHTML = `
+    <div class="ai-suggest-bubble">
+      <span class="ai-suggest-avatar">🤖</span>
+      <div class="ai-suggest-text">${escapeHtml(result.suggestion)}</div>
+    </div>
+    ${recommendedIds.length ? `
+      <div class="ai-suggest-links">
+        ${recommendedIds.map((rid) => {
+          const recipe = (s.recipes || []).find((r) => r.id === rid);
+          if (!recipe) return '';
+          return `<button class="ai-recipe-link" data-action="open-recipe" data-id="${rid}">${escapeHtml(recipe.title)} →</button>`;
+        }).filter(Boolean).join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, '<br>');
 }
 
 function sortFridgeItems(items, sortMode) {
