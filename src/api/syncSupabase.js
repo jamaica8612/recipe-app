@@ -264,7 +264,7 @@ export async function loadSupabaseDataIntoLocalState() {
       .order('created_at', { ascending: false }),
     supabase
       .from('fridge_items')
-      .select('id,source_local_id,name,checked,purchased_at,expires_at,created_at')
+      .select('id,source_local_id,name,checked,purchased_at,expires_at,is_shopping,created_at')
       .eq('user_id', userData.user.id)
       .order('created_at', { ascending: true }),
   ]);
@@ -347,6 +347,7 @@ export async function loadSupabaseDataIntoLocalState() {
       checked: Boolean(item.checked),
       purchasedAt: item.purchased_at || '',
       expiresAt: item.expires_at || '',
+      isShopping: Boolean(item.is_shopping),
       remoteId: item.id,
     })),
   });
@@ -552,6 +553,7 @@ async function upsertFridgeItems(supabase, userId, items) {
       checked: Boolean(item.checked),
       purchased_at: item.purchasedAt || null,
       expires_at: item.expiresAt || null,
+      is_shopping: Boolean(item.isShopping),
     }));
   if (!rows.length) return 0;
 
