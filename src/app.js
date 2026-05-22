@@ -109,6 +109,16 @@ function showLoadingScreen(message = '불러오는 중…') {
 }
 
 async function init() {
+  // Share Target 처리 — 유튜브 앱에서 공유하기로 열렸을 때
+  // manifest share_target: action=app.html?url=YOUTUBE_URL
+  const searchParams = new URLSearchParams(location.search);
+  const sharedUrl = searchParams.get('url') || searchParams.get('text') || '';
+  if (sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be'))) {
+    // URL 파라미터 히스토리에서 제거 (깔끔하게)
+    history.replaceState(null, '', location.pathname + (location.hash || ''));
+    sessionStorage.setItem('recipe-app:share-url', sharedUrl);
+  }
+
   // 공유 링크 경로 → 인증 없이 바로 렌더
   const initialHash = location.hash;
   if (initialHash.startsWith('#/shared/')) {
@@ -153,7 +163,13 @@ async function init() {
 
   onRouteChange(render);
   subscribe(() => render(activeRoute));
-  render();
+
+  // 공유 URL이 있으면 분석 화면으로 바로 이동
+  if (sessionStorage.getItem('recipe-app:share-url')) {
+    navigate('/analyze');
+  } else {
+    render();
+  }
 }
 
 init();
