@@ -77,6 +77,9 @@ export function renderDetail(recipeId) {
             <button class="detail-round-btn ${recipe.isFavorite ? 'is-on' : ''}" data-action="favorite" type="button" aria-label="즐겨찾기">${raw(icon('star', 17))}</button>
             ${videoUrl ? raw(`<a class="detail-video-btn" href="${esc(videoUrl)}" target="_blank" rel="noreferrer">${icon('external', 14)} 원본</a>`) : ''}
           </div>
+          <div class="detail-overlay detail-overlay-bottom-right">
+            <button class="detail-round-btn ${recipe.shareCode ? 'is-shared' : ''}" id="share-icon-btn" data-action="share-icon" data-recipe-id="${esc(recipe.id)}" data-code="${esc(recipe.shareCode || '')}" type="button" aria-label="공유">${raw(icon('share', 16))}</button>
+          </div>
         </div>
         <div class="recipe-detail-head">
           <div class="detail-kicker">
@@ -116,19 +119,6 @@ export function renderDetail(recipeId) {
           <div class="detail-sub-actions">
             <button class="btn btn--secondary btn--block" data-action="edit-recipe" type="button">${raw(icon('edit', 15))} 수정</button>
             <button class="btn btn--secondary btn--block" data-action="delete-recipe" type="button">${raw(icon('trash', 15))} 삭제</button>
-          </div>
-          <div class="share-box" id="share-box">
-            ${recipe.shareCode ? raw(`
-              <div class="share-active">
-                <span class="share-active-label">${raw(icon('link', 14))} 공유 링크 활성화됨</span>
-                <div class="share-active-btns">
-                  <button class="btn btn--outline btn--sm" data-action="copy-share-link" data-code="${esc(recipe.shareCode)}">링크 복사</button>
-                  <button class="btn btn--ghost btn--sm" data-action="revoke-share" data-recipe-id="${esc(recipe.id)}">링크 삭제</button>
-                </div>
-              </div>
-            `) : raw(`
-              <button class="btn btn--outline btn--block" data-action="create-share" data-recipe-id="${esc(recipe.id)}">${icon('share', 15)} 공유 링크 만들기</button>
-            `)}
           </div>
           <div class="field-help" id="delete-status"></div>
         </section>
@@ -197,58 +187,56 @@ export function bindDetail(rootEl, navigate, recipeId) {
       deleteRecipe(recipeId);
       navigate('/home');
     }
-    if (target.dataset.action === 'create-share') {
-      target.disabled = true;
-      target.textContent = '링크 생성 중...';
-      try {
-        const code = await generateShareCode(recipeId);
-        setRecipeShareCode(recipeId, code);
-        renderShareBox(rootEl, recipeId, code);
-        copyShareLink(code);
+    if (target.dataset.action === 'share-icon') {
+      const btn = rootEl.querySelector('#share-icon-btn');
+      const existingCode = target.dataset.code;
+      if (existingCode) {
+        // 이미 공유 중 → 링크 복사
+        copyShareLink(existingCode);
         showShareToast(rootEl, '링크를 복사했습니다!');
-      } catch (err) {
-        console.warn('Share code generation failed', err);
-        target.disabled = false;
-        target.innerHTML = `${icon('share', 15)} 공유 링크 만들기`;
-      }
-    }
-    if (target.dataset.action === 'copy-share-link') {
-      copyShareLink(target.dataset.code);
-      showShareToast(rootEl, '링크를 복사했습니다!');
-    }
-    if (target.dataset.action === 'revoke-share') {
-      if (!confirm('공유 링크를 삭제할까요? 이 링크로 접근이 불가능해집니다.')) return;
-      target.disabled = true;
-      try {
-        await revokeShareCode(recipeId);
-        setRecipeShareCode(recipeId, null);
-        renderShareBox(rootEl, recipeId, null);
-      } catch (err) {
-        console.warn('Revoke share failed', err);
-        target.disabled = false;
+      } else {
+        // 공유 코드 생성
+        if (btn) btn.disabled = true;
+        try {
+          const code = await generateShareCode(recipeId);
+          setRecipeShareCode(recipeId, code);
+          updateShareIcon(rootEl, code);
+          copyShareLink(code);
+          showShareToast(rootEl, '링크를 복사했습니다!');
+        } catch (err) {
+          console.warn('Share code generation failed', err);
+          if (btn) btn.disabled = false;
+        }
       }
     }
   });
+
+  // 공유 아이콘 길게 누르면 링크 삭제
+  const shareIconBtn = rootEl.querySelector('#share-icon-btn');
+  if (shareIconBtn) {
+    shareIconBtn.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      const code = shareIconBtn.dataset.code;
+      if (!code) return;
+      if (!confirm('공유 링크를 삭제할까요?')) return;
+      try {
+        await revokeShareCode(recipeId);
+        setRecipeShareCode(recipeId, null);
+        updateShareIcon(rootEl, null);
+        showShareToast(rootEl, '링크를 삭제했습니다.');
+      } catch (err) {
+        console.warn('Revoke share failed', err);
+      }
+    });
+  }
 }
 
-function renderShareBox(rootEl, recipeId, code) {
-  const box = rootEl.querySelector('#share-box');
-  if (!box) return;
-  if (code) {
-    box.innerHTML = `
-      <div class="share-active">
-        <span class="share-active-label">${icon('link', 14)} 공유 링크 활성화됨</span>
-        <div class="share-active-btns">
-          <button class="btn btn--outline btn--sm" data-action="copy-share-link" data-code="${code}">링크 복사</button>
-          <button class="btn btn--ghost btn--sm" data-action="revoke-share" data-recipe-id="${recipeId}">링크 삭제</button>
-        </div>
-      </div>
-    `;
-  } else {
-    box.innerHTML = `
-      <button class="btn btn--outline btn--block" data-action="create-share" data-recipe-id="${recipeId}">${icon('share', 15)} 공유 링크 만들기</button>
-    `;
-  }
+function updateShareIcon(rootEl, code) {
+  const btn = rootEl.querySelector('#share-icon-btn');
+  if (!btn) return;
+  btn.dataset.code = code || '';
+  btn.classList.toggle('is-shared', Boolean(code));
+  btn.disabled = false;
 }
 
 function copyShareLink(code) {
