@@ -178,6 +178,19 @@ export function renderPreview(draftId) {
         </div>
       `)}
       ${raw(reviewNote)}
+      ${Array.isArray(analysis.commentInsights) && analysis.commentInsights.length > 0 ? raw(`
+        <div class="comment-insights">
+          <div class="comment-insights-title">💬 댓글 주요 의견</div>
+          <div class="comment-insights-list">
+            ${analysis.commentInsights.map((i) => `
+              <div class="comment-insight-item">
+                <span class="comment-insight-emoji">${esc(String(i.emoji || '💬'))}</span>
+                <span class="comment-insight-text">${esc(String(i.text || ''))}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `) : ''}
       ${canReportAnalysis ? raw(`
         <button class="btn btn--secondary btn--block" type="button" data-action="report-analysis">
           분석 결과 신고
