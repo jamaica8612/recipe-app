@@ -36,6 +36,11 @@ type AuthUser = {
   email: string | null;
 };
 
+type CommentInsight = {
+  emoji: string;
+  text: string;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -118,37 +123,44 @@ serve(async (req) => {
 
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
   const youtubeApiKey = Deno.env.get("YOUTUBE_API_KEY");
+  const openrouterKey = Deno.env.get("OPENROUTER_API_KEY");
 
   const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
-  // 2.5-flash-lite는 가벼운 모델이라 별도 capacity pool에 가까움 — flash/pro 고수요 시 먼저 회피.
-  // (2.0-flash는 2026년에 신규 사용자에게 deprecated 되어 404 반환됨)
   const fallbackModel = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-2.5-flash-lite";
   const secondaryFallbackModel = Deno.env.get("GEMINI_SECONDARY_FALLBACK_MODEL") || "gemini-2.5-pro";
 
-  // 댓글 가져오기 (YouTube API 키가 있을 때만, 실패해도 분석은 계속)
-  const comments = youtubeApiKey
-    ? await fetchYouTubeComments(videoId, youtubeApiKey)
-    : [];
-
-  const analysisResult = geminiKey
-    ? await analyzeWithGemini({
-      apiKey: geminiKey,
-      model,
-      fallbackModel,
-      secondaryFallbackModel,
-      url: body.url || `https://youtu.be/${videoId}`,
-      videoId,
-      comments,
-    })
-    : { ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const };
+  // 댓글 가져오기 + Gemini 분석을 병렬 실행
+  // Gemini는 영상만 분석 (댓글 없이) → 빠르고 저렴
+  // Qwen은 댓글만 요약 → 한국어 품질 우수, 저렴
+  const [comments, analysisResult] = await Promise.all([
+    youtubeApiKey ? fetchYouTubeComments(videoId, youtubeApiKey) : Promise.resolve([]),
+    geminiKey
+      ? analyzeWithGemini({
+        apiKey: geminiKey,
+        model,
+        fallbackModel,
+        secondaryFallbackModel,
+        url: body.url || `https://youtu.be/${videoId}`,
+        videoId,
+      })
+      : Promise.resolve({ ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const }),
+  ]);
 
   if (!analysisResult.ok) {
     await logFailure(supabase, videoId, userId, analysisResult.reason, analysisResult.message);
-    // Gemini의 raw 영문 에러 메시지는 로그에만 남기고, 사용자에겐 failureCopy[reason]만 노출
     return json(failure("gemini", analysisResult.reason), 200);
   }
 
-  const analysis = analysisResult.analysis;
+  // 댓글 요약: OpenRouter Qwen이 있으면 사용, 없으면 빈 배열
+  const commentInsights: CommentInsight[] = (openrouterKey && comments.length > 0)
+    ? await summarizeCommentsWithQwen(comments, openrouterKey)
+    : [];
+
+  const analysis = {
+    ...analysisResult.analysis,
+    commentInsights,
+  };
+
   const { error } = await supabase.from("video_analyses").upsert({
     youtube_video_id: videoId,
     title: analysis.title,
@@ -316,7 +328,6 @@ async function analyzeWithGemini({
   secondaryFallbackModel,
   url,
   videoId,
-  comments,
 }: {
   apiKey: string;
   model: string;
@@ -324,13 +335,10 @@ async function analyzeWithGemini({
   secondaryFallbackModel?: string;
   url: string;
   videoId: string;
-  comments: string[];
 }): Promise<
   | { ok: true; source: "gemini"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
   | { ok: false; reason: FailureReason; message?: string }
 > {
-  // Cascade: primary (2.5-flash) → fallback (2.5-flash-lite) → secondary (2.5-pro).
-  // 각 단계 자체에 503/429 재시도가 들어있어 capacity 일시 부족을 최대한 흡수.
   const attempts: string[] = [model];
   if (fallbackModel && fallbackModel !== model) attempts.push(fallbackModel);
   if (secondaryFallbackModel && !attempts.includes(secondaryFallbackModel)) attempts.push(secondaryFallbackModel);
@@ -341,12 +349,11 @@ async function analyzeWithGemini({
   let lastResult: GeminiResult = { ok: false, reason: "api_unavailable" };
   let usedModel = model;
   for (const m of attempts) {
-    lastResult = await callGemini({ apiKey, model: m, url, comments });
+    lastResult = await callGemini({ apiKey, model: m, url });
     if (lastResult.ok) {
       usedModel = m;
       break;
     }
-    // schema_invalid · not_recipe 같은 결정적 실패는 모델을 바꿔도 동일하므로 즉시 중단
     if (lastResult.reason !== "api_unavailable") break;
   }
   const result = lastResult;
@@ -381,29 +388,21 @@ async function callGemini({
   apiKey,
   model,
   url,
-  comments,
 }: {
   apiKey: string;
   model: string;
   url: string;
-  comments: string[];
 }): Promise<
   | { ok: true; parsed: unknown }
   | { ok: false; reason: FailureReason; message?: string }
 > {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const parts: Array<{ text: string } | { file_data: { file_uri: string } }> = [
-    { text: recipePrompt(comments.length > 0) },
-    { file_data: { file_uri: url } },
-  ];
-  if (comments.length > 0) {
-    parts.push({
-      text: `\n\n--- 시청자 댓글 (인기순 ${comments.length}개) ---\n${comments.join("\n")}`,
-    });
-  }
   const requestBody = JSON.stringify({
     contents: [{
-      parts,
+      parts: [
+        { text: recipePrompt() },
+        { file_data: { file_uri: url } },
+      ],
     }],
     generationConfig: {
       responseMimeType: "application/json",
@@ -411,7 +410,6 @@ async function callGemini({
     },
   });
 
-  // 503/429 일시 부하 대비: 1.2초 백오프 후 1회 재시도
   const maxAttempts = 2;
   let response: Response | null = null;
   let attempt = 0;
@@ -436,7 +434,6 @@ async function callGemini({
   }
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    // 진단용 로그 — Supabase Functions 로그에서 status code + 본문 확인 가능
     console.error(`[gemini] status=${response.status} model=${model} body=${errorText.slice(0, 500)}`);
     return {
       ok: false,
@@ -461,24 +458,87 @@ async function callGemini({
   return { ok: true, parsed };
 }
 
-function recipePrompt(hasComments = false) {
-  const lines = [
+// 댓글 요약 — OpenRouter Qwen2.5-72B (한국어 특화, 저렴)
+async function summarizeCommentsWithQwen(
+  comments: string[],
+  apiKey: string,
+): Promise<CommentInsight[]> {
+  try {
+    const commentText = comments.slice(0, 50).join("\n");
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://jamaica8612.github.io/recipe-app/",
+        "X-Title": "Recipe App",
+      },
+      body: JSON.stringify({
+        model: "qwen/qwen-2.5-72b-instruct",
+        messages: [
+          {
+            role: "user",
+            content: `아래는 유튜브 요리 영상의 시청자 댓글입니다.
+이 댓글들을 분석해서 시청자들의 주요 의견을 3~5개로 요약하세요.
+
+댓글:
+${commentText}
+
+반드시 JSON 배열만 반환하세요 (다른 텍스트 없이):
+[{"emoji": "이모지1개", "text": "한 줄 한국어 요약"}, ...]
+
+규칙:
+- 맛 평가, 재료 대체, 조리 팁, 양 조절 등 실질적으로 도움되는 의견 우선
+- 단순 칭찬("맛있겠다", "해봐야지")은 제외
+- 의미있는 의견이 없으면 [] 반환`,
+          },
+        ],
+        max_tokens: 600,
+        temperature: 0.3,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[qwen] status=${response.status}`);
+      return [];
+    }
+
+    const data = await response.json();
+    const text = (data.choices?.[0]?.message?.content || "").trim();
+    console.log(`[qwen] response: ${text.slice(0, 200)}`);
+
+    // JSON 배열 추출 (마크다운 코드블록 등 감싸진 경우 처리)
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return [];
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item: unknown) => {
+        const i = item as Record<string, unknown>;
+        return {
+          emoji: String(i.emoji || "💬").trim().slice(0, 4),
+          text: String(i.text || "").trim(),
+        };
+      })
+      .filter((i) => i.text)
+      .slice(0, 5);
+  } catch (err) {
+    console.error(`[qwen] error: ${err}`);
+    return [];
+  }
+}
+
+function recipePrompt() {
+  return [
     "이 YouTube 요리 영상을 한국어 레시피로 구조화하세요.",
     "요리 영상이 아니면 isRecipe를 false로 반환하세요.",
     "channelName에는 셰프 개인명이 아니라 YouTube 채널명 또는 영상 출처명을 넣으세요. 확실하지 않으면 빈 문자열로 두세요.",
     "situationTagIds에는 허용된 태그 ID 중 적절한 것을 0~3개만 고르세요: party(홈파티), solo(혼밥), lunchbox(도시락), diet(다이어트), quick(초스피드), airfryer(에어프라이어), guest(손님상), late(야식).",
     "재료명, 수량, 단위, 조리 단계, 원본 영상 timestampSec, 팁을 추출하세요.",
     "확실하지 않은 값은 빈 문자열 또는 0으로 두고 confidence를 낮추세요.",
-  ];
-  if (hasComments) {
-    lines.push(
-      "제공된 댓글을 분석해 시청자들의 주요 의견을 commentInsights에 3~5개 요약하세요.",
-      "각 항목은 emoji(이모지 1개)와 text(한 줄 한국어 요약)로 구성하세요.",
-      "맛 평가, 양 조절, 재료 대체, 조리 시간/온도 팁 등 실제로 도움되는 의견을 우선하세요.",
-      "의미있는 의견이 없으면 commentInsights를 빈 배열로 두세요.",
-    );
-  }
-  return lines.join("\n");
+  ].join("\n");
 }
 
 function recipeResponseSchema() {
@@ -530,17 +590,6 @@ function recipeResponseSchema() {
         type: "array",
         items: { type: "string" },
       },
-      commentInsights: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            emoji: { type: "string" },
-            text: { type: "string" },
-          },
-          required: ["emoji", "text"],
-        },
-      },
     },
     required: [
       "isRecipe",
@@ -554,7 +603,6 @@ function recipeResponseSchema() {
       "ingredients",
       "steps",
       "tips",
-      "commentInsights",
     ],
   };
 }
@@ -597,18 +645,7 @@ function normalizeGeminiRecipe(value: unknown, videoId: string) {
     ingredients,
     steps,
     tips: Array.isArray(recipe.tips) ? recipe.tips.map((tip) => String(tip).trim()).filter(Boolean) : [],
-    commentInsights: Array.isArray(recipe.commentInsights)
-      ? recipe.commentInsights
-          .map((item) => {
-            const i = item as Record<string, unknown>;
-            return {
-              emoji: String(i.emoji || "💬").trim().slice(0, 4),
-              text: String(i.text || "").trim(),
-            };
-          })
-          .filter((i) => i.text)
-          .slice(0, 5)
-      : [],
+    commentInsights: [] as CommentInsight[], // Qwen이 채움
   };
 }
 
@@ -680,5 +717,6 @@ function makeMockAnalysis(videoId: string) {
       { order: 3, text: "간을 보고 그릇에 담아 마무리한다.", timestampSec: 240 },
     ],
     tips: ["Gemini REST 연동 전까지 사용하는 Edge Function 계약 목업입니다."],
+    commentInsights: [] as CommentInsight[],
   };
 }
