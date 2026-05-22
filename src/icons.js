@@ -41,6 +41,8 @@ export function icon(name, size = 20) {
       return `<svg ${filled}><rect x="5" y="3.5" width="4" height="13" rx="1"/><rect x="11" y="3.5" width="4" height="13" rx="1"/></svg>`;
     case 'check':
       return `<svg ${attrs}><path d="m4.5 10.5 3.5 3.5L16 6"/></svg>`;
+    case 'send':
+      return `<svg ${attrs}><path d="M17 3 3.5 9.5l5 1.5 2 4.5 1.5-4L17 3z"/><path d="m8.5 11 3-3"/></svg>`;
     case 'book':
     default:
       return `<svg ${attrs}><path d="M4 4h11a2 2 0 0 1 2 2v11H6a2 2 0 0 1-2-2z"/><path d="M4 4v11a2 2 0 0 0 2 2"/></svg>`;

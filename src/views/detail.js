@@ -2,6 +2,7 @@ import { esc, html, raw, ytThumbnail, formatTimestamp } from '../util.js';
 import { consumeFlash, deleteRecipe, getState, toggleFavorite } from '../store.js';
 import { deleteRecipeFromSupabase, syncRecipeToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
+import { askRecipe } from '../api/askRecipe.js';
 
 export function renderDetail(recipeId) {
   const state = getState();
@@ -111,6 +112,37 @@ export function renderDetail(recipeId) {
           <div class="cook-steps">${raw(steps)}</div>
         </section>
         ${tips ? raw(`<section class="detail-section"><h3>Tip</h3><ul class="tip-list">${tips}</ul></section>`) : ''}
+        ${Array.isArray(recipe.commentInsights) && recipe.commentInsights.length > 0 ? raw(`
+          <section class="detail-section">
+            <div class="comment-insights">
+              <div class="comment-insights-title">💬 댓글 주요 의견</div>
+              <div class="comment-insights-list">
+                ${recipe.commentInsights.map((i) => `
+                  <div class="comment-insight-item">
+                    <span class="comment-insight-emoji">${esc(String(i.emoji || '💬'))}</span>
+                    <span class="comment-insight-text">${esc(String(i.text || ''))}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </section>
+        `) : ''}
+        <section class="detail-section recipe-chat-section">
+          <div class="recipe-chat-header">
+            <span class="recipe-chat-icon">🤖</span>
+            <h3>레시피 AI에게 물어보기</h3>
+          </div>
+          <div class="recipe-chat-msgs" id="recipe-chat-msgs"></div>
+          <div class="recipe-chat-suggestions">
+            <button class="recipe-chat-chip" data-action="ask-suggestion" data-q="재료를 대체할 수 있는 게 있을까?">재료 대체</button>
+            <button class="recipe-chat-chip" data-action="ask-suggestion" data-q="2인분으로 줄이면 재료 양이 어떻게 돼?">분량 조절</button>
+            <button class="recipe-chat-chip" data-action="ask-suggestion" data-q="더 맛있게 만드는 팁이 있을까?">꿀팁</button>
+          </div>
+          <form class="recipe-chat-form" data-action="ask-recipe-submit">
+            <input class="recipe-chat-input" id="recipe-chat-input" type="text" placeholder="이 레시피에 대해 뭐든 물어보세요…" autocomplete="off" />
+            <button class="recipe-chat-send" type="submit" aria-label="질문하기">${raw(icon('send', 16))}</button>
+          </form>
+        </section>
         <section class="detail-section detail-actions">
           <button class="btn btn--primary btn--lg btn--block" data-action="start-cooking" type="button">${raw(icon('play', 15))} 조리 모드 시작</button>
           <div class="detail-sub-actions">
@@ -137,6 +169,9 @@ function getYouTubeUrl(videoId) {
 }
 
 export function bindDetail(rootEl, navigate, recipeId) {
+  // 채팅 히스토리 (in-memory)
+  const chatHistory = [];
+
   rootEl.addEventListener('click', async (e) => {
     const target = e.target.closest('[data-action]');
     if (!target) return;
@@ -184,7 +219,92 @@ export function bindDetail(rootEl, navigate, recipeId) {
       deleteRecipe(recipeId);
       navigate('/home');
     }
+    // 추천 질문 칩 클릭
+    if (target.dataset.action === 'ask-suggestion') {
+      const q = target.dataset.q;
+      if (!q) return;
+      const input = rootEl.querySelector('#recipe-chat-input');
+      if (input) input.value = q;
+      await submitChatQuestion(rootEl, recipeId, chatHistory, q);
+    }
   });
+
+  // 채팅 폼 submit
+  rootEl.addEventListener('submit', async (e) => {
+    const form = e.target.closest('[data-action="ask-recipe-submit"]');
+    if (!form) return;
+    e.preventDefault();
+    const input = form.querySelector('#recipe-chat-input');
+    const question = input?.value?.trim();
+    if (!question) return;
+    input.value = '';
+    await submitChatQuestion(rootEl, recipeId, chatHistory, question);
+  });
+}
+
+async function submitChatQuestion(rootEl, recipeId, chatHistory, question) {
+  const recipe = getState().recipes.find((item) => item.id === recipeId);
+  if (!recipe) return;
+
+  const msgs = rootEl.querySelector('#recipe-chat-msgs');
+  if (!msgs) return;
+
+  // 추천 칩 숨기기 (첫 질문 후)
+  const suggestions = rootEl.querySelector('.recipe-chat-suggestions');
+  if (suggestions) suggestions.style.display = 'none';
+
+  // 사용자 메시지 추가
+  appendChatMsg(msgs, 'user', question);
+
+  // 로딩 메시지
+  const loadingEl = appendChatMsg(msgs, 'ai', '…', true);
+
+  // 전송 버튼 비활성화
+  const sendBtn = rootEl.querySelector('.recipe-chat-send');
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const result = await askRecipe({
+      recipe: {
+        title: recipe.title,
+        ingredients: recipe.ingredients || [],
+        steps: recipe.steps || [],
+        tips: recipe.tips || [],
+        servings: recipe.servings,
+        cookTimeMin: recipe.cookTimeMin,
+        channelName: recipe.channelName || recipe.chefName || '',
+      },
+      question,
+      history: chatHistory.slice(),
+    });
+
+    loadingEl.remove();
+
+    if (result.ok && result.answer) {
+      appendChatMsg(msgs, 'ai', result.answer);
+      chatHistory.push({ role: 'user', content: question });
+      chatHistory.push({ role: 'assistant', content: result.answer });
+      // 히스토리 최대 12개 유지
+      while (chatHistory.length > 12) chatHistory.shift();
+    } else {
+      appendChatMsg(msgs, 'ai', result.error || '답변 생성에 실패했습니다.', false, true);
+    }
+  } catch {
+    loadingEl.remove();
+    appendChatMsg(msgs, 'ai', '오류가 발생했습니다. 다시 시도해주세요.', false, true);
+  } finally {
+    if (sendBtn) sendBtn.disabled = false;
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+}
+
+function appendChatMsg(container, role, text, isLoading = false, isError = false) {
+  const el = document.createElement('div');
+  el.className = `recipe-chat-msg recipe-chat-msg--${role}${isLoading ? ' is-loading' : ''}${isError ? ' is-error' : ''}`;
+  el.textContent = text;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+  return el;
 }
 
 function ingredientChip(item, baseServings, targetServings) {
