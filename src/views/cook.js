@@ -87,9 +87,16 @@ export function renderCook(recipeId) {
 }
 
 export function bindCook(rootEl, navigate, recipeId) {
+  // 이전 렌더에서 등록된 리스너 정리 (스텝 이동 시 누적 방지)
+  rootEl.__cookCleanup?.();
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  rootEl.__cookCleanup = () => controller.abort();
+
   requestWakeLock();
 
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener('visibilitychange', handleVisibilityChange, { signal });
 
   rootEl.addEventListener('click', (e) => {
     const target = e.target.closest('[data-action]');
@@ -106,7 +113,7 @@ export function bindCook(rootEl, navigate, recipeId) {
     if (target.dataset.action === 'toggle-done') toggleDone(rootEl, recipeId);
     if (target.dataset.action === 'show-video') toggleVideoBox(rootEl, target);
     if (target.dataset.action === 'close-video') closeVideoBox(rootEl);
-  });
+  }, { signal });
 
   function handleVisibilityChange() {
     if (document.visibilityState === 'visible') requestWakeLock();
