@@ -94,6 +94,7 @@ function readRecipeFromForm(form, draft) {
     ingredients,
     steps,
     tips: parseLines(form.tips.value),
+    commentInsights: Array.isArray(analysis.commentInsights) ? analysis.commentInsights : [],
     analysisMeta: {
       source: draft.response.source,
       confidence: analysis.confidence ?? null,
