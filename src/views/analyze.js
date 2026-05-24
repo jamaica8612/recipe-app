@@ -1,4 +1,4 @@
-// 분석 — AI 영상 분석 뷰
+// 분석 — 실제 Edge Function 계약에 맞춘 목업 경계
 import { html, extractVideoId } from '../util.js';
 import { createAnalysisDraft } from '../store.js';
 import { analyzeVideo } from '../api/analyzeVideo.js';
@@ -26,6 +26,7 @@ export function renderAnalyze() {
 
       <div class="analyze-hint">
         💡 <strong style="color:var(--c-ink)">또는</strong> 유튜브 앱에서 <strong style="color:var(--c-ink)">공유하기</strong> → 이 앱을 선택하면 자동으로 분석이 시작됩니다.
+        <br><span class="api-mode">${getAnalyzeEndpoint() ? 'Edge Function 연결 모드' : '목업 분석 모드'}</span>
       </div>
 
       <div id="analyze-status"></div>
@@ -61,14 +62,14 @@ export function bindAnalyze(rootEl, navigate) {
         return;
       }
 
-      help.textContent = '영상 인식 완료';
+      help.textContent = `videoId: ${videoId}`;
       help.style.color = 'var(--c-ink-3)';
       t.disabled = true;
       status.innerHTML = `
         <div class="spinner-box">
           <div class="dots">●●●</div>
           <div style="margin-top:8px; font-size:var(--t-sm); color:var(--c-ink-2)">
-            Gemini 분석 중…
+            Gemini 분석 중… (${getAnalyzeEndpoint() ? 'Edge Function 호출' : '계약 검증용 목업'})
           </div>
         </div>
       `;
@@ -83,38 +84,14 @@ export function bindAnalyze(rootEl, navigate) {
     }
   });
 
-  // 공유 인텐트로 들어왔을 때 자동 채우기
-  // 1) sessionStorage: manifest share_target → app.js → navigate('/analyze') 경로
-  // 2) query string: 직접 URL로 들어온 경우 (fallback)
-  const storedUrl = sessionStorage.getItem('recipe-app:share-url');
+  // 공유 인텐트로 들어왔을 때 URL이 query string에 있다면 자동 채우기
   const params = new URLSearchParams(location.search);
-  let sharedUrl = storedUrl || params.get('url') || params.get('v');
-  if (!sharedUrl) {
-    const textParam = params.get('text') || '';
-    const videoId = extractVideoId(textParam);
-    if (videoId) {
-      sharedUrl = `https://youtu.be/${videoId}`;
-    }
-  } else {
-    const videoId = extractVideoId(sharedUrl);
-    if (videoId) {
-      sharedUrl = `https://youtu.be/${videoId}`;
-    }
-  }
-
-  const shared = normalizeSharedInput(sharedUrl);
+  const shared = normalizeSharedInput(params.get('url') || params.get('v'));
   if (shared) {
-    if (storedUrl) sessionStorage.removeItem('recipe-app:share-url');
     const input = rootEl.querySelector('#yt-url');
     if (input) {
       input.value = shared;
       autoAnalyzeSharedUrl(rootEl, shared);
-    }
-    
-    // 쿼리 매개변수 지우기 (새로고침 시 무한 루프 방지)
-    if (location.search) {
-      const cleanUrl = location.pathname + location.hash;
-      history.replaceState({}, document.title, cleanUrl);
     }
   }
 }

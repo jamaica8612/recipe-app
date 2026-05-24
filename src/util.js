@@ -44,7 +44,7 @@ export function cx(...args) {
 }
 
 // YouTube URL 또는 공유 텍스트 → videoId 추출
-const YT_RE = /(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/;
+const YT_RE = /(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/;
 export function extractVideoId(text) {
   if (!text) return null;
   const m = String(text).match(YT_RE);

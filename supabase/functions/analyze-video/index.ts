@@ -36,11 +36,6 @@ type AuthUser = {
   email: string | null;
 };
 
-type CommentInsight = {
-  emoji: string;
-  text: string;
-};
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -122,45 +117,30 @@ serve(async (req) => {
   }
 
   const geminiKey = Deno.env.get("GEMINI_API_KEY");
-  const youtubeApiKey = Deno.env.get("YOUTUBE_API_KEY");
-  const openrouterKey = Deno.env.get("OPENROUTER_API_KEY");
 
   const model = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
+  // 2.5-flash-lite는 가벼운 모델이라 별도 capacity pool에 가까움 — flash/pro 고수요 시 먼저 회피.
+  // (2.0-flash는 2026년에 신규 사용자에게 deprecated 되어 404 반환됨)
   const fallbackModel = Deno.env.get("GEMINI_FALLBACK_MODEL") || "gemini-2.5-flash-lite";
   const secondaryFallbackModel = Deno.env.get("GEMINI_SECONDARY_FALLBACK_MODEL") || "gemini-2.5-pro";
-
-  // 댓글 가져오기 + Gemini 분석을 병렬 실행
-  // Gemini는 영상만 분석 (댓글 없이) → 빠르고 저렴
-  // Qwen은 댓글만 요약 → 한국어 품질 우수, 저렴
-  const [comments, analysisResult] = await Promise.all([
-    youtubeApiKey ? fetchYouTubeComments(videoId, youtubeApiKey) : Promise.resolve([]),
-    geminiKey
-      ? analyzeWithGemini({
-        apiKey: geminiKey,
-        model,
-        fallbackModel,
-        secondaryFallbackModel,
-        url: body.url || `https://youtu.be/${videoId}`,
-        videoId,
-      })
-      : Promise.resolve({ ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const }),
-  ]);
+  const analysisResult = geminiKey
+    ? await analyzeWithGemini({
+      apiKey: geminiKey,
+      model,
+      fallbackModel,
+      secondaryFallbackModel,
+      url: body.url || `https://youtu.be/${videoId}`,
+      videoId,
+    })
+    : { ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const };
 
   if (!analysisResult.ok) {
     await logFailure(supabase, videoId, userId, analysisResult.reason, analysisResult.message);
+    // Gemini의 raw 영문 에러 메시지는 로그에만 남기고, 사용자에겐 failureCopy[reason]만 노출
     return json(failure("gemini", analysisResult.reason), 200);
   }
 
-  // 댓글 요약: OpenRouter Qwen이 있으면 사용, 없으면 빈 배열
-  const commentInsights: CommentInsight[] = (openrouterKey && comments.length > 0)
-    ? await summarizeCommentsWithQwen(comments, openrouterKey)
-    : [];
-
-  const analysis = {
-    ...analysisResult.analysis,
-    commentInsights,
-  };
-
+  const analysis = analysisResult.analysis;
   const { error } = await supabase.from("video_analyses").upsert({
     youtube_video_id: videoId,
     title: analysis.title,
@@ -306,7 +286,7 @@ function failure(
 }
 
 function extractVideoId(text: string) {
-  const match = text.match(/(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/);
+  const match = text.match(/(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/);
   return match?.[1] || null;
 }
 
@@ -319,104 +299,6 @@ function detectMockFailure(input: string): FailureReason | null {
   if (text.includes("toolong")) return "too_long";
   if (text.includes("apierr")) return "api_unavailable";
   return null;
-}
-
-type YouTubeContext = {
-  title: string;
-  description: string;
-  channelName: string;
-  transcript: string;
-};
-
-async function fetchYouTubeContext(videoId: string): Promise<YouTubeContext> {
-  const context: YouTubeContext = {
-    title: "",
-    description: "",
-    channelName: "",
-    transcript: "",
-  };
-
-  try {
-    const url = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
-    const clientVersion = "20.10.38";
-    const body = {
-      videoId: videoId,
-      context: {
-        client: {
-          clientName: "ANDROID",
-          clientVersion: clientVersion,
-        },
-      },
-    };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "User-Agent": `com.google.android.youtube/${clientVersion} (Linux; U; Android 14)`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      console.warn(`[youtube-context] InnerTube player API fetch failed. status=${response.status}`);
-      return context;
-    }
-
-    const data = await response.json();
-
-    // 메타데이터 추출
-    context.title = data?.videoDetails?.title || "";
-    context.description = data?.videoDetails?.shortDescription || "";
-    context.channelName = data?.videoDetails?.author || "";
-
-    // 자막(captionTracks) 정보 찾기
-    const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (captionTracks && Array.isArray(captionTracks) && captionTracks.length > 0) {
-      const koTrack = captionTracks.find((t: any) => t.languageCode === "ko");
-      const track = koTrack || captionTracks[0];
-      if (track && track.baseUrl) {
-        // srv3를 json3로 치환하여 JSON 형태로 자막 정보 가져오기
-        let transcriptUrl = track.baseUrl;
-        if (transcriptUrl.includes("fmt=srv3")) {
-          transcriptUrl = transcriptUrl.replace("fmt=srv3", "fmt=json3");
-        } else if (!transcriptUrl.includes("fmt=json3")) {
-          transcriptUrl = `${transcriptUrl}&fmt=json3`;
-        }
-
-        const transcriptResponse = await fetch(transcriptUrl, {
-          headers: {
-            "User-Agent": `com.google.android.youtube/${clientVersion} (Linux; U; Android 14)`,
-          },
-        });
-
-        if (transcriptResponse.ok) {
-          const transcriptData = await transcriptResponse.json();
-          if (transcriptData && Array.isArray(transcriptData.events)) {
-            const lines: string[] = [];
-            for (const event of transcriptData.events) {
-              if (!event.segs) continue;
-              const text = event.segs.map((seg: any) => seg.utf8).join("").trim();
-              if (!text) continue;
-              const startSec = Math.floor((event.tStartMs || 0) / 1000);
-              const m = Math.floor(startSec / 60);
-              const s = String(startSec % 60).padStart(2, '0');
-              lines.push(`[${m}:${s}] ${text}`);
-            }
-            context.transcript = lines.join("\n");
-          }
-        } else {
-          console.warn(`[youtube-context] Failed to fetch transcript data. status=${transcriptResponse.status}`);
-        }
-      }
-    } else {
-      console.info(`[youtube-context] No caption tracks found for videoId=${videoId}`);
-    }
-  } catch (err) {
-    console.error(`[youtube-context] Error occurred while fetching context for videoId=${videoId}`, err);
-  }
-
-  return context;
 }
 
 async function analyzeWithGemini({
@@ -437,12 +319,11 @@ async function analyzeWithGemini({
   | { ok: true; source: "gemini"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
   | { ok: false; reason: FailureReason; message?: string }
 > {
+  // Cascade: primary (2.5-flash) → fallback (2.5-flash-lite) → secondary (2.5-pro).
+  // 각 단계 자체에 503/429 재시도가 들어있어 capacity 일시 부족을 최대한 흡수.
   const attempts: string[] = [model];
   if (fallbackModel && fallbackModel !== model) attempts.push(fallbackModel);
   if (secondaryFallbackModel && !attempts.includes(secondaryFallbackModel)) attempts.push(secondaryFallbackModel);
-
-  // 1. YouTube 영상 페이지에서 컨텍스트(설명란, 채널명, 자막 등) 추출
-  const ytContext = await fetchYouTubeContext(videoId);
 
   type GeminiResult =
     | { ok: true; parsed: unknown }
@@ -450,11 +331,12 @@ async function analyzeWithGemini({
   let lastResult: GeminiResult = { ok: false, reason: "api_unavailable" };
   let usedModel = model;
   for (const m of attempts) {
-    lastResult = await callGemini({ apiKey, model: m, videoId, ytContext, url });
+    lastResult = await callGemini({ apiKey, model: m, url });
     if (lastResult.ok) {
       usedModel = m;
       break;
     }
+    // schema_invalid · not_recipe 같은 결정적 실패는 모델을 바꿔도 동일하므로 즉시 중단
     if (lastResult.reason !== "api_unavailable") break;
   }
   const result = lastResult;
@@ -488,41 +370,21 @@ async function analyzeWithGemini({
 async function callGemini({
   apiKey,
   model,
-  videoId,
-  ytContext,
   url,
 }: {
   apiKey: string;
   model: string;
-  videoId: string;
-  ytContext: YouTubeContext;
   url: string;
 }): Promise<
   | { ok: true; parsed: unknown }
   | { ok: false; reason: FailureReason; message?: string }
 > {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-  const promptText = `
-이 YouTube 요리 영상의 자막(Transcript)과 메타데이터를 사용하여 상세하고 정확한 한국어 레시피로 구조화하세요.
-
-[영상 정보]
-비디오 ID: ${videoId}
-영상 URL: ${url}
-제목: ${ytContext.title || "알 수 없음"}
-채널명: ${ytContext.channelName || ""}
-영상 설명:
-${ytContext.description || "영상 설명이 없습니다."}
-
-[영상 자막 (타임스탬프 포함)]
-${ytContext.transcript || "자막을 가져올 수 없습니다. 설명란과 제목을 기준으로 추정하여 레시피를 작성하세요."}
-`;
-
   const requestBody = JSON.stringify({
     contents: [{
       parts: [
         { text: recipePrompt() },
-        { text: promptText },
+        { file_data: { file_uri: url } },
       ],
     }],
     generationConfig: {
@@ -531,6 +393,7 @@ ${ytContext.transcript || "자막을 가져올 수 없습니다. 설명란과 �
     },
   });
 
+  // 503/429 일시 부하 대비: 1.2초 백오프 후 1회 재시도
   const maxAttempts = 2;
   let response: Response | null = null;
   let attempt = 0;
@@ -555,6 +418,7 @@ ${ytContext.transcript || "자막을 가져올 수 없습니다. 설명란과 �
   }
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
+    // 진단용 로그 — Supabase Functions 로그에서 status code + 본문 확인 가능
     console.error(`[gemini] status=${response.status} model=${model} body=${errorText.slice(0, 500)}`);
     return {
       ok: false,
@@ -577,78 +441,6 @@ ${ytContext.transcript || "자막을 가져올 수 없습니다. 설명란과 �
   }
 
   return { ok: true, parsed };
-}
-
-// 댓글 요약 — OpenRouter Qwen2.5-72B (한국어 특화, 저렴)
-async function summarizeCommentsWithQwen(
-  comments: string[],
-  apiKey: string,
-): Promise<CommentInsight[]> {
-  try {
-    const commentText = comments.slice(0, 50).join("\n");
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://jamaica8612.github.io/recipe-app/",
-        "X-Title": "Recipe App",
-      },
-      body: JSON.stringify({
-        model: "qwen/qwen-2.5-72b-instruct",
-        messages: [
-          {
-            role: "user",
-            content: `아래는 유튜브 요리 영상의 시청자 댓글입니다.
-이 댓글들을 분석해서 시청자들의 주요 의견을 3~5개로 요약하세요.
-
-댓글:
-${commentText}
-
-반드시 JSON 배열만 반환하세요 (다른 텍스트 없이):
-[{"emoji": "이모지1개", "text": "한 줄 한국어 요약"}, ...]
-
-규칙:
-- 맛 평가, 재료 대체, 조리 팁, 양 조절 등 실질적으로 도움되는 의견 우선
-- 단순 칭찬("맛있겠다", "해봐야지")은 제외
-- 의미있는 의견이 없으면 [] 반환`,
-          },
-        ],
-        max_tokens: 600,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!response.ok) {
-      console.error(`[qwen] status=${response.status}`);
-      return [];
-    }
-
-    const data = await response.json();
-    const text = (data.choices?.[0]?.message?.content || "").trim();
-    console.log(`[qwen] response: ${text.slice(0, 200)}`);
-
-    // JSON 배열 추출 (마크다운 코드블록 등 감싸진 경우 처리)
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item: unknown) => {
-        const i = item as Record<string, unknown>;
-        return {
-          emoji: String(i.emoji || "💬").trim().slice(0, 4),
-          text: String(i.text || "").trim(),
-        };
-      })
-      .filter((i) => i.text)
-      .slice(0, 5);
-  } catch (err) {
-    console.error(`[qwen] error: ${err}`);
-    return [];
-  }
 }
 
 function recipePrompt() {
@@ -766,7 +558,6 @@ function normalizeGeminiRecipe(value: unknown, videoId: string) {
     ingredients,
     steps,
     tips: Array.isArray(recipe.tips) ? recipe.tips.map((tip) => String(tip).trim()).filter(Boolean) : [],
-    commentInsights: [] as CommentInsight[], // Qwen이 채움
   };
 }
 
@@ -801,22 +592,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<string[]> {
-  try {
-    const url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=50&order=relevance&key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!resp.ok) return [];
-    type CommentItem = { snippet?: { topLevelComment?: { snippet?: { textDisplay?: string } } } };
-    const data = await resp.json() as { items?: CommentItem[] };
-    return (data.items || [])
-      .map((item) => item?.snippet?.topLevelComment?.snippet?.textDisplay || "")
-      .filter(Boolean)
-      .slice(0, 50);
-  } catch {
-    return [];
-  }
-}
-
 function makeMockAnalysis(videoId: string) {
   return {
     youtubeVideoId: videoId,
@@ -838,6 +613,5 @@ function makeMockAnalysis(videoId: string) {
       { order: 3, text: "간을 보고 그릇에 담아 마무리한다.", timestampSec: 240 },
     ],
     tips: ["Gemini REST 연동 전까지 사용하는 Edge Function 계약 목업입니다."],
-    commentInsights: [] as CommentInsight[],
   };
 }

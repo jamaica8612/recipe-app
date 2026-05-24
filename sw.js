@@ -1,15 +1,13 @@
 // 매우 단순한 서비스 워커 — 정적 자산을 캐시 우선 전략(stale-while-revalidate)으로 제공.
 // 네트워크 요청(Supabase 등)은 그대로 통과.
 
-const CACHE = 'recipe-app-v8';
+const CACHE = 'recipe-app-v7';
 const STATIC_ASSETS = [
   './app.html',
   './styles.css',
   './manifest.webmanifest',
   './icon.svg',
   './icon-maskable.svg',
-  './icon-192.png',
-  './icon-512.png',
   './src/app.js',
   './src/router.js',
   './src/store.js',
@@ -32,7 +30,6 @@ const STATIC_ASSETS = [
   './src/views/members.js',
   './src/views/settings.js',
   './src/views/account.js',
-  './src/views/shared.js',
 ];
 
 self.addEventListener('install', (event) => {
@@ -60,14 +57,6 @@ self.addEventListener('fetch', (event) => {
   // 외부 도메인(Supabase, YouTube 썸네일 등)은 그냥 네트워크
   if (url.origin !== location.origin) return;
 
-  // Share Target으로 열렸을 때 (app.html?url=...) → app.html 캐시 반환
-  if (url.pathname.endsWith('/app.html') && url.searchParams.has('url')) {
-    event.respondWith(
-      caches.match('./app.html').then((cached) => cached || fetch('./app.html'))
-    );
-    return;
-  }
-
   event.respondWith(
     fetch(request).then((response) => {
       if (response && response.status === 200 && response.type === 'basic') {
@@ -79,11 +68,11 @@ self.addEventListener('fetch', (event) => {
       caches.match(request).then((cached) => {
         if (cached) return cached;
         return fetch(request).then((response) => {
-          if (response && response.status === 200 && response.type === 'basic') {
-            const clone = response.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
-          }
-          return response;
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {});
+        }
+        return response;
         });
       })
     )

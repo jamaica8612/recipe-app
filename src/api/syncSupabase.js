@@ -170,44 +170,6 @@ export async function syncFridgeItemToSupabase(item) {
   return { skipped: false, fridgeItems: result };
 }
 
-export async function generateShareCode(localRecipeId) {
-  const supabase = getSupabaseClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) throw new Error('로그인이 필요합니다.');
-
-  // 8자리 랜덤 코드 생성
-  const code = Array.from(crypto.getRandomValues(new Uint8Array(6)))
-    .map((b) => b.toString(36).padStart(2, '0'))
-    .join('')
-    .toUpperCase()
-    .slice(0, 8);
-
-  const { data, error } = await supabase
-    .from('recipes')
-    .update({ share_code: code })
-    .eq('user_id', userData.user.id)
-    .eq('source_local_id', localRecipeId)
-    .select('share_code')
-    .single();
-
-  if (error) throw error;
-  return data.share_code;
-}
-
-export async function revokeShareCode(localRecipeId) {
-  const supabase = getSupabaseClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData.user) throw new Error('로그인이 필요합니다.');
-
-  const { error } = await supabase
-    .from('recipes')
-    .update({ share_code: null })
-    .eq('user_id', userData.user.id)
-    .eq('source_local_id', localRecipeId);
-
-  if (error) throw error;
-}
-
 export async function deleteFridgeItemFromSupabase(localItemId) {
   const supabase = getSupabaseClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -253,8 +215,6 @@ export async function loadSupabaseDataIntoLocalState() {
         cook_time_min,
         custom_notes,
         is_favorite,
-        share_code,
-        comment_insights,
         created_at,
         recipe_ingredients(name,amount,unit,sort_order),
         recipe_steps(step_order,text,timestamp_sec),
@@ -264,7 +224,7 @@ export async function loadSupabaseDataIntoLocalState() {
       .order('created_at', { ascending: false }),
     supabase
       .from('fridge_items')
-      .select('id,source_local_id,name,checked,purchased_at,expires_at,is_shopping,created_at')
+      .select('id,source_local_id,name,checked,purchased_at,expires_at,created_at')
       .eq('user_id', userData.user.id)
       .order('created_at', { ascending: true }),
   ]);
@@ -332,8 +292,6 @@ export async function loadSupabaseDataIntoLocalState() {
         .map((line) => line.trim())
         .filter(Boolean),
       remoteId: recipe.id,
-      shareCode: recipe.share_code || null,
-      commentInsights: Array.isArray(recipe.comment_insights) ? recipe.comment_insights : [],
     };
   });
 
@@ -347,7 +305,6 @@ export async function loadSupabaseDataIntoLocalState() {
       checked: Boolean(item.checked),
       purchasedAt: item.purchased_at || '',
       expiresAt: item.expires_at || '',
-      isShopping: Boolean(item.is_shopping),
       remoteId: item.id,
     })),
   });
@@ -527,9 +484,6 @@ async function upsertRecipes(supabase, userId, recipes, categoryMap, memberMap) 
       cook_time_min: Number(recipe.cookTimeMin) || 0,
       custom_notes: recipe.tips?.join('\n') || null,
       is_favorite: Boolean(recipe.isFavorite),
-      comment_insights: Array.isArray(recipe.commentInsights) && recipe.commentInsights.length > 0
-        ? recipe.commentInsights
-        : [],
     }, { onConflict: 'user_id,source_local_id' }).select('id').single();
     if (recipeResult.error) throw recipeResult.error;
 
@@ -553,7 +507,6 @@ async function upsertFridgeItems(supabase, userId, items) {
       checked: Boolean(item.checked),
       purchased_at: item.purchasedAt || null,
       expires_at: item.expiresAt || null,
-      is_shopping: Boolean(item.isShopping),
     }));
   if (!rows.length) return 0;
 

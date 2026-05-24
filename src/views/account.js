@@ -1,10 +1,13 @@
 import { html } from '../util.js';
+import { getSupabaseConfig } from '../config.js';
 import { getSupabaseClient } from '../supabaseClient.js';
-import { loadSupabaseDataIntoLocalState } from '../api/syncSupabase.js';
+import { getState } from '../store.js';
+import { backupLocalDataToSupabase, loadSupabaseDataIntoLocalState } from '../api/syncSupabase.js';
 
 let currentUser = null;
 
 export async function renderAccount() {
+  const config = getSupabaseConfig();
   currentUser = await getCurrentUserSafe();
 
   return {
@@ -13,17 +16,17 @@ export async function renderAccount() {
       <div class="title">계정</div>
       <div style="width:36px"></div>
     `,
-    body: currentUser ? signedInBody() : signedOutBody(),
+    body: currentUser ? signedInBody(config) : signedOutBody(config),
     flush: false,
     showNav: false,
   };
 }
 
-function signedOutBody() {
+function signedOutBody(config) {
   return html`
     <div class="callout callout--info">
       <span class="icon">i</span>
-      <div><strong>로그인이 필요합니다</strong><br>이메일과 비밀번호로 로그인하면 레시피를 저장하고 불러올 수 있습니다.</div>
+      <div><strong>Supabase Auth</strong><br>${config.url} 프로젝트에 이메일/비밀번호로 로그인합니다.</div>
     </div>
     <form id="auth-form" class="stack">
       <label class="field">
@@ -35,21 +38,27 @@ function signedOutBody() {
         <input class="input" name="password" type="password" autocomplete="current-password" minlength="6" required />
       </label>
       <button class="btn btn--primary btn--lg btn--block" type="submit" data-auth-mode="sign-in">로그인</button>
-      <button class="btn btn--secondary btn--block" type="submit" data-auth-mode="sign-up">회원가입</button>
+      <button class="btn btn--secondary btn--block" type="submit" data-auth-mode="sign-up">가입</button>
       <div class="field-error" id="auth-error"></div>
       <div class="field-help" id="auth-help">가입 후 이메일 확인이 필요할 수 있습니다.</div>
     </form>
   `;
 }
 
-function signedInBody() {
+function signedInBody(config) {
   return html`
     <div class="callout callout--olive">
       <span class="icon">✓</span>
       <div><strong>로그인됨</strong><br>${currentUser.email}</div>
     </div>
+    <div class="facts">
+      <div class="fact"><span class="key">Project</span><span>${config.url}</span></div>
+      <div class="fact"><span class="key">User ID</span><span>${currentUser.id}</span></div>
+    </div>
+    <button class="btn btn--primary btn--block" data-action="backup-local" type="button">로컬 데이터 Supabase에 백업</button>
+    <button class="btn btn--secondary btn--block" data-action="restore-remote" type="button">Supabase에서 불러오기</button>
     <button class="btn btn--secondary btn--block" data-action="sign-out" type="button">로그아웃</button>
-    <div class="field-help" id="account-status"></div>
+    <div class="field-help" id="backup-status"></div>
   `;
 }
 
@@ -61,6 +70,37 @@ export function bindAccount(rootEl, navigate) {
       await getSupabaseClient().auth.signOut();
       navigate('/account');
     }
+    if (target?.dataset.action === 'backup-local') {
+      const status = rootEl.querySelector('#backup-status');
+      target.disabled = true;
+      if (status) status.textContent = '백업 중...';
+      try {
+        const result = await backupLocalDataToSupabase();
+        if (status) status.textContent = `백업 완료: 구성원 ${result.members}명, 레시피 ${result.recipes}개, 냉장고 ${result.fridgeItems || 0}개`;
+      } catch (err) {
+        if (status) status.textContent = err.message || '백업에 실패했습니다.';
+      } finally {
+        target.disabled = false;
+      }
+    }
+    if (target?.dataset.action === 'restore-remote') {
+      const state = getState();
+      const hasLocalData = (state.recipes || []).length > 0
+        || (state.members || []).length > 0
+        || (state.fridgeItems || []).length > 0;
+      if (hasLocalData && !confirm('현재 로컬 데이터를 Supabase 데이터로 교체할까요?')) return;
+      const status = rootEl.querySelector('#backup-status');
+      target.disabled = true;
+      if (status) status.textContent = '불러오는 중...';
+      try {
+        const result = await loadSupabaseDataIntoLocalState();
+        if (status) status.textContent = `불러오기 완료: 구성원 ${result.members}명, 레시피 ${result.recipes}개, 냉장고 ${result.fridgeItems || 0}개`;
+      } catch (err) {
+        if (status) status.textContent = err.message || '불러오기에 실패했습니다.';
+      } finally {
+        target.disabled = false;
+      }
+    }
   });
 
   const form = rootEl.querySelector('#auth-form');
@@ -71,7 +111,7 @@ export function bindAccount(rootEl, navigate) {
     const errorNode = rootEl.querySelector('#auth-error');
     const helpNode = rootEl.querySelector('#auth-help');
     errorNode.textContent = '';
-    helpNode.textContent = '처리 중…';
+    helpNode.textContent = '처리 중...';
 
     const data = new FormData(form);
     const email = String(data.get('email') || '').trim();
@@ -86,20 +126,10 @@ export function bindAccount(rootEl, navigate) {
       helpNode.textContent = '';
       return;
     }
-
-    if (mode === 'sign-up') {
-      helpNode.textContent = '가입 요청을 보냈습니다. 이메일 확인 후 로그인해주세요.';
-      return;
-    }
-
-    // 로그인 성공 → Supabase에서 데이터 로드 후 홈으로
-    helpNode.textContent = '데이터를 불러오는 중…';
-    try {
-      await loadSupabaseDataIntoLocalState();
-    } catch (err) {
-      console.warn('Supabase load after login failed', err);
-    }
-    navigate('/home');
+    helpNode.textContent = mode === 'sign-up'
+      ? '가입 요청을 보냈습니다. 이메일 확인 후 로그인해주세요.'
+      : '로그인했습니다.';
+    navigate('/account');
   });
 }
 

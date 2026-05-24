@@ -1,49 +1,56 @@
-// 전역 상태 — 런타임 인메모리 + filter만 localStorage로 유지
-// 데이터(레시피·구성원·카테고리·냉장고)는 Supabase가 단일 소스
+// 매우 단순한 전역 상태 — localStorage로 영속화 + 변경 시 콜백 호출
+// Supabase 연동 시 fetch/insert/update 로직만 이 안에서 바꾸면 됨
 
-import { CATEGORIES } from './data.js';
+import { RECIPES, MEMBERS, CATEGORIES } from './data.js';
 import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from './ingredientMatch.js';
 
-// filter 상태만 localStorage에 저장 (UI 편의용)
-const FILTER_KEY = 'recipe-app:filter';
+const KEY = 'recipe-app:v1';
 
-function loadFilterFromStorage() {
+function loadFromStorage() {
   try {
-    const raw = localStorage.getItem(FILTER_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    return normalizeState(JSON.parse(raw));
   } catch {
     return null;
   }
 }
 
-function saveFilterToStorage(filter) {
+function saveToStorage(state) {
   try {
-    localStorage.setItem(FILTER_KEY, JSON.stringify(filter));
-  } catch { /* ignore */ }
-}
-
-function defaultFilter() {
-  return {
-    categoryId: 'all',
-    memberId: null,
-    favoriteOnly: false,
-    query: '',
-    viewMode: 'category',
-    fridgeFocusId: null,
-    fridgeSort: 'expiry',
-    fridgeTab: 'stock',
-  };
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    /* 용량 초과 등은 일단 무시 */
+  }
 }
 
 function defaultState() {
   return {
-    recipes: [],
-    members: [],
+    recipes:    [...RECIPES],
+    members:    [...MEMBERS],
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { ...defaultFilter(), ...loadFilterFromStorage() },
-    flash: '',
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry' },
+  };
+}
+
+function normalizeState(value) {
+  const base = defaultState();
+  if (!value || typeof value !== 'object') return base;
+
+  return {
+    ...base,
+    ...value,
+    recipes: Array.isArray(value.recipes) ? value.recipes : base.recipes,
+    members: Array.isArray(value.members) ? value.members : base.members,
+    categories: normalizeCategories(value.categories, base.categories),
+    fridgeItems: normalizeFridgeItems(value.fridgeItems),
+    analysisDrafts: Array.isArray(value.analysisDrafts) ? value.analysisDrafts : [],
+    filter: {
+      ...base.filter,
+      ...(value.filter && typeof value.filter === 'object' ? value.filter : {}),
+    },
   };
 }
 
@@ -62,7 +69,6 @@ function normalizeFridgeItems(items) {
       checked: Boolean(item?.checked),
       purchasedAt: normalizeDateValue(item?.purchasedAt || item?.purchased_at),
       expiresAt: normalizeDateValue(item?.expiresAt || item?.expires_at),
-      isShopping: Boolean(item?.isShopping || item?.is_shopping),
     }))
     .filter((item) => item.name);
 }
@@ -72,7 +78,9 @@ function normalizeDateValue(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
 }
 
-let state = defaultState();
+const initial = loadFromStorage() || defaultState();
+
+let state = initial;
 const listeners = new Set();
 
 export function getState() { return state; }
@@ -80,7 +88,7 @@ export function subscribe(fn) { listeners.add(fn); return () => listeners.delete
 
 function set(updater) {
   state = typeof updater === 'function' ? updater(state) : { ...state, ...updater };
-  saveFilterToStorage(state.filter);
+  saveToStorage(state);
   for (const fn of listeners) fn(state);
 }
 
@@ -101,6 +109,7 @@ export function setSearchQuery(query) {
   set((s) => ({ ...s, filter: { ...s.filter, query: String(query || '') } }));
 }
 export function setViewMode(viewMode) {
+  // viewMode: 'category' | 'member' | 'chef'
   const allowed = ['category', 'member', 'chef'];
   const next = allowed.includes(viewMode) ? viewMode : 'category';
   set((s) => ({ ...s, filter: { ...s.filter, viewMode: next } }));
@@ -111,10 +120,6 @@ export function setFridgeFocusItem(id) {
 export function setFridgeSort(sort) {
   const next = sort === 'name' ? 'name' : 'expiry';
   set((s) => ({ ...s, filter: { ...s.filter, fridgeSort: next } }));
-}
-export function setFridgeTab(tab) {
-  const next = tab === 'shopping' ? 'shopping' : 'stock';
-  set((s) => ({ ...s, filter: { ...s.filter, fridgeTab: next } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({
@@ -160,13 +165,6 @@ export function updateRecipe(id, patch) {
   set((s) => ({
     ...s,
     recipes: s.recipes.map((r) => (r.id === id ? { ...r, ...patch } : r)),
-  }));
-}
-
-export function setRecipeShareCode(id, shareCode) {
-  set((s) => ({
-    ...s,
-    recipes: s.recipes.map((r) => (r.id === id ? { ...r, shareCode: shareCode || null } : r)),
   }));
 }
 export function deleteRecipe(id) {
@@ -232,10 +230,7 @@ export function addFridgeItem(input) {
   const clean = String(payload.name || '').trim();
   if (!clean) return null;
 
-  // 재고 탭에서는 같은 이름 중복 체크 (장보기 탭에는 허용)
-  const exists = state.fridgeItems.some(
-    (item) => !item.isShopping && item.name.toLowerCase() === clean.toLowerCase(),
-  );
+  const exists = state.fridgeItems.some((item) => item.name.toLowerCase() === clean.toLowerCase());
   if (exists) return null;
 
   const id = 'fi' + (Date.now() % 1e8).toString(36);
@@ -247,47 +242,9 @@ export function addFridgeItem(input) {
       checked: true,
       purchasedAt: normalizeDateValue(payload.purchasedAt),
       expiresAt: normalizeDateValue(payload.expiresAt),
-      isShopping: false,
     }],
   }));
   return id;
-}
-
-export function addShoppingItem(name) {
-  const clean = String(name || '').trim();
-  if (!clean) return null;
-
-  // 이미 장보기에 같은 이름이 있으면 중복 추가 안 함
-  const exists = state.fridgeItems.some(
-    (item) => item.isShopping && item.name.toLowerCase() === clean.toLowerCase(),
-  );
-  if (exists) return null;
-
-  const id = 'fi' + (Date.now() % 1e8).toString(36);
-  set((s) => ({
-    ...s,
-    fridgeItems: [...(s.fridgeItems || []), {
-      id,
-      name: clean,
-      checked: false,
-      purchasedAt: '',
-      expiresAt: '',
-      isShopping: true,
-    }],
-  }));
-  return id;
-}
-
-export function moveShoppingToFridge(id) {
-  const today = new Date().toISOString().slice(0, 10);
-  set((s) => ({
-    ...s,
-    fridgeItems: (s.fridgeItems || []).map((item) =>
-      item.id === id
-        ? { ...item, isShopping: false, checked: true, purchasedAt: today }
-        : item,
-    ),
-  }));
 }
 
 export function updateFridgeItem(id, patch) {
@@ -333,8 +290,8 @@ export function replaceLibrary({ members, recipes, categories, fridgeItems }) {
     members: members || [],
     recipes: recipes || [],
     categories: categories || s.categories,
-    fridgeItems: Array.isArray(fridgeItems) ? normalizeFridgeItems(fridgeItems) : (s.fridgeItems || []),
-    filter: { ...defaultFilter(), ...loadFilterFromStorage() },
+    fridgeItems: Array.isArray(fridgeItems) ? fridgeItems : (s.fridgeItems || []),
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category' },
   }));
 }
 
@@ -346,6 +303,7 @@ export function consumeFlash() {
   const message = state.flash || '';
   if (message) {
     state = { ...state, flash: '' };
+    saveToStorage(state);
   }
   return message;
 }
