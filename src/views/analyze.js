@@ -86,12 +86,27 @@ export function bindAnalyze(rootEl, navigate) {
 
   // 공유 인텐트로 들어왔을 때 URL이 query string에 있다면 자동 채우기
   const params = new URLSearchParams(location.search);
-  const shared = normalizeSharedInput(params.get('url') || params.get('v'));
+  let sharedUrl = params.get('url') || params.get('v');
+  if (!sharedUrl) {
+    const textParam = params.get('text') || '';
+    const videoId = extractVideoId(textParam);
+    if (videoId) {
+      sharedUrl = `https://youtu.be/${videoId}`;
+    }
+  }
+
+  const shared = normalizeSharedInput(sharedUrl);
   if (shared) {
     const input = rootEl.querySelector('#yt-url');
     if (input) {
       input.value = shared;
       autoAnalyzeSharedUrl(rootEl, shared);
+    }
+    
+    // 쿼리 매개변수 지우기 (새로고침 시 무한 루프 방지)
+    if (location.search) {
+      const cleanUrl = location.pathname + location.hash;
+      history.replaceState({}, document.title, cleanUrl);
     }
   }
 }

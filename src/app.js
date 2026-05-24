@@ -91,6 +91,14 @@ async function render(route = currentRoute()) {
   bind(app);
 }
 
+// 공유 파라미터가 쿼리 스트링에 있는 경우, 분석 화면으로 유도
+const params = new URLSearchParams(location.search);
+if (params.has('url') || params.has('text') || params.has('v')) {
+  if (location.hash !== '#/analyze') {
+    location.hash = '#/analyze';
+  }
+}
+
 onRouteChange(render);
 subscribe(() => render(activeRoute));
 render();

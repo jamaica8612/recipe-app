@@ -286,7 +286,7 @@ function failure(
 }
 
 function extractVideoId(text: string) {
-  const match = text.match(/(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/);
+  const match = text.match(/(?:youtube\.com\/(?:watch\?.*?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/);
   return match?.[1] || null;
 }
 
@@ -299,6 +299,104 @@ function detectMockFailure(input: string): FailureReason | null {
   if (text.includes("toolong")) return "too_long";
   if (text.includes("apierr")) return "api_unavailable";
   return null;
+}
+
+type YouTubeContext = {
+  title: string;
+  description: string;
+  channelName: string;
+  transcript: string;
+};
+
+async function fetchYouTubeContext(videoId: string): Promise<YouTubeContext> {
+  const context: YouTubeContext = {
+    title: "",
+    description: "",
+    channelName: "",
+    transcript: "",
+  };
+
+  try {
+    const url = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
+    const clientVersion = "20.10.38";
+    const body = {
+      videoId: videoId,
+      context: {
+        client: {
+          clientName: "ANDROID",
+          clientVersion: clientVersion,
+        },
+      },
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "User-Agent": `com.google.android.youtube/${clientVersion} (Linux; U; Android 14)`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      console.warn(`[youtube-context] InnerTube player API fetch failed. status=${response.status}`);
+      return context;
+    }
+
+    const data = await response.json();
+
+    // 메타데이터 추출
+    context.title = data?.videoDetails?.title || "";
+    context.description = data?.videoDetails?.shortDescription || "";
+    context.channelName = data?.videoDetails?.author || "";
+
+    // 자막(captionTracks) 정보 찾기
+    const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (captionTracks && Array.isArray(captionTracks) && captionTracks.length > 0) {
+      const koTrack = captionTracks.find((t: any) => t.languageCode === "ko");
+      const track = koTrack || captionTracks[0];
+      if (track && track.baseUrl) {
+        // srv3를 json3로 치환하여 JSON 형태로 자막 정보 가져오기
+        let transcriptUrl = track.baseUrl;
+        if (transcriptUrl.includes("fmt=srv3")) {
+          transcriptUrl = transcriptUrl.replace("fmt=srv3", "fmt=json3");
+        } else if (!transcriptUrl.includes("fmt=json3")) {
+          transcriptUrl = `${transcriptUrl}&fmt=json3`;
+        }
+
+        const transcriptResponse = await fetch(transcriptUrl, {
+          headers: {
+            "User-Agent": `com.google.android.youtube/${clientVersion} (Linux; U; Android 14)`,
+          },
+        });
+
+        if (transcriptResponse.ok) {
+          const transcriptData = await transcriptResponse.json();
+          if (transcriptData && Array.isArray(transcriptData.events)) {
+            const lines: string[] = [];
+            for (const event of transcriptData.events) {
+              if (!event.segs) continue;
+              const text = event.segs.map((seg: any) => seg.utf8).join("").trim();
+              if (!text) continue;
+              const startSec = Math.floor((event.tStartMs || 0) / 1000);
+              const m = Math.floor(startSec / 60);
+              const s = String(startSec % 60).padStart(2, '0');
+              lines.push(`[${m}:${s}] ${text}`);
+            }
+            context.transcript = lines.join("\n");
+          }
+        } else {
+          console.warn(`[youtube-context] Failed to fetch transcript data. status=${transcriptResponse.status}`);
+        }
+      }
+    } else {
+      console.info(`[youtube-context] No caption tracks found for videoId=${videoId}`);
+    }
+  } catch (err) {
+    console.error(`[youtube-context] Error occurred while fetching context for videoId=${videoId}`, err);
+  }
+
+  return context;
 }
 
 async function analyzeWithGemini({
@@ -319,11 +417,12 @@ async function analyzeWithGemini({
   | { ok: true; source: "gemini"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
   | { ok: false; reason: FailureReason; message?: string }
 > {
-  // Cascade: primary (2.5-flash) → fallback (2.5-flash-lite) → secondary (2.5-pro).
-  // 각 단계 자체에 503/429 재시도가 들어있어 capacity 일시 부족을 최대한 흡수.
   const attempts: string[] = [model];
   if (fallbackModel && fallbackModel !== model) attempts.push(fallbackModel);
   if (secondaryFallbackModel && !attempts.includes(secondaryFallbackModel)) attempts.push(secondaryFallbackModel);
+
+  // 1. YouTube 영상 페이지에서 컨텍스트(설명란, 채널명, 자막 등) 추출
+  const ytContext = await fetchYouTubeContext(videoId);
 
   type GeminiResult =
     | { ok: true; parsed: unknown }
@@ -331,12 +430,11 @@ async function analyzeWithGemini({
   let lastResult: GeminiResult = { ok: false, reason: "api_unavailable" };
   let usedModel = model;
   for (const m of attempts) {
-    lastResult = await callGemini({ apiKey, model: m, url });
+    lastResult = await callGemini({ apiKey, model: m, videoId, ytContext, url });
     if (lastResult.ok) {
       usedModel = m;
       break;
     }
-    // schema_invalid · not_recipe 같은 결정적 실패는 모델을 바꿔도 동일하므로 즉시 중단
     if (lastResult.reason !== "api_unavailable") break;
   }
   const result = lastResult;
@@ -370,21 +468,41 @@ async function analyzeWithGemini({
 async function callGemini({
   apiKey,
   model,
+  videoId,
+  ytContext,
   url,
 }: {
   apiKey: string;
   model: string;
+  videoId: string;
+  ytContext: YouTubeContext;
   url: string;
 }): Promise<
   | { ok: true; parsed: unknown }
   | { ok: false; reason: FailureReason; message?: string }
 > {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const promptText = `
+이 YouTube 요리 영상의 자막(Transcript)과 메타데이터를 사용하여 상세하고 정확한 한국어 레시피로 구조화하세요.
+
+[영상 정보]
+비디오 ID: ${videoId}
+영상 URL: ${url}
+제목: ${ytContext.title || "알 수 없음"}
+채널명: ${ytContext.channelName || ""}
+영상 설명:
+${ytContext.description || "영상 설명이 없습니다."}
+
+[영상 자막 (타임스탬프 포함)]
+${ytContext.transcript || "자막을 가져올 수 없습니다. 설명란과 제목을 기준으로 추정하여 레시피를 작성하세요."}
+`;
+
   const requestBody = JSON.stringify({
     contents: [{
       parts: [
         { text: recipePrompt() },
-        { file_data: { file_uri: url } },
+        { text: promptText },
       ],
     }],
     generationConfig: {

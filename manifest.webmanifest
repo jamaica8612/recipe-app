@@ -9,6 +9,15 @@
   "background_color": "#f4efe6",
   "theme_color": "#b2452c",
   "lang": "ko",
+  "share_target": {
+    "action": "./app.html",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "icons": [
     {
       "src": "./icon.svg",
