@@ -1,6 +1,6 @@
 import { esc, html, raw, ytThumbnail, formatTimestamp } from '../util.js';
-import { consumeFlash, deleteRecipe, getState, toggleFavorite } from '../store.js';
-import { deleteRecipeFromSupabase, syncRecipeToSupabase } from '../api/syncSupabase.js';
+import { consumeFlash, deleteRecipe, getState, setRecipeShareCode, toggleFavorite } from '../store.js';
+import { deleteRecipeFromSupabase, generateShareCode, revokeShareCode, syncRecipeToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
 
 export function renderDetail(recipeId) {
@@ -77,6 +77,9 @@ export function renderDetail(recipeId) {
             <button class="detail-round-btn ${recipe.isFavorite ? 'is-on' : ''}" data-action="favorite" type="button" aria-label="즐겨찾기">${raw(icon('star', 17))}</button>
             ${videoUrl ? raw(`<a class="detail-video-btn" href="${esc(videoUrl)}" target="_blank" rel="noreferrer">${icon('external', 14)} 원본</a>`) : ''}
           </div>
+          <div class="detail-overlay detail-overlay-bottom-right">
+            <button class="detail-round-btn ${recipe.shareCode ? 'is-shared' : ''}" id="share-icon-btn" data-action="share-icon" data-recipe-id="${esc(recipe.id)}" data-code="${esc(recipe.shareCode || '')}" type="button" aria-label="공유">${raw(icon('share', 16))}</button>
+          </div>
         </div>
         <div class="recipe-detail-head">
           <div class="detail-kicker">
@@ -111,6 +114,21 @@ export function renderDetail(recipeId) {
           <div class="cook-steps">${raw(steps)}</div>
         </section>
         ${tips ? raw(`<section class="detail-section"><h3>Tip</h3><ul class="tip-list">${tips}</ul></section>`) : ''}
+        ${Array.isArray(recipe.commentInsights) && recipe.commentInsights.length > 0 ? raw(`
+          <section class="detail-section">
+            <div class="comment-insights">
+              <div class="comment-insights-title">💬 댓글 주요 의견</div>
+              <div class="comment-insights-list">
+                ${recipe.commentInsights.map((i) => `
+                  <div class="comment-insight-item">
+                    <span class="comment-insight-emoji">${esc(String(i.emoji || '💬'))}</span>
+                    <span class="comment-insight-text">${esc(String(i.text || ''))}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </section>
+        `) : ''}
         <section class="detail-section detail-actions">
           <button class="btn btn--primary btn--lg btn--block" data-action="start-cooking" type="button">${raw(icon('play', 15))} 조리 모드 시작</button>
           <div class="detail-sub-actions">
@@ -184,7 +202,73 @@ export function bindDetail(rootEl, navigate, recipeId) {
       deleteRecipe(recipeId);
       navigate('/home');
     }
+    if (target.dataset.action === 'share-icon') {
+      const btn = rootEl.querySelector('#share-icon-btn');
+      const existingCode = target.dataset.code;
+      if (existingCode) {
+        // 이미 공유 중 → 링크 복사
+        copyShareLink(existingCode);
+        showShareToast(rootEl, '링크를 복사했습니다!');
+      } else {
+        // 공유 코드 생성
+        if (btn) btn.disabled = true;
+        try {
+          const code = await generateShareCode(recipeId);
+          setRecipeShareCode(recipeId, code);
+          updateShareIcon(rootEl, code);
+          copyShareLink(code);
+          showShareToast(rootEl, '링크를 복사했습니다!');
+        } catch (err) {
+          console.warn('Share code generation failed', err);
+          if (btn) btn.disabled = false;
+        }
+      }
+    }
   });
+
+  // 공유 아이콘 길게 누르면 링크 삭제
+  const shareIconBtn = rootEl.querySelector('#share-icon-btn');
+  if (shareIconBtn) {
+    shareIconBtn.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      const code = shareIconBtn.dataset.code;
+      if (!code) return;
+      if (!confirm('공유 링크를 삭제할까요?')) return;
+      try {
+        await revokeShareCode(recipeId);
+        setRecipeShareCode(recipeId, null);
+        updateShareIcon(rootEl, null);
+        showShareToast(rootEl, '링크를 삭제했습니다.');
+      } catch (err) {
+        console.warn('Revoke share failed', err);
+      }
+    });
+  }
+}
+
+function updateShareIcon(rootEl, code) {
+  const btn = rootEl.querySelector('#share-icon-btn');
+  if (!btn) return;
+  btn.dataset.code = code || '';
+  btn.classList.toggle('is-shared', Boolean(code));
+  btn.disabled = false;
+}
+
+function copyShareLink(code) {
+  const url = `${location.origin}${location.pathname}#/shared/${code}`;
+  navigator.clipboard.writeText(url).catch(() => {});
+}
+
+function showShareToast(rootEl, message) {
+  let toast = rootEl.querySelector('.share-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'share-toast';
+    rootEl.querySelector('.app-content')?.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('is-visible');
+  setTimeout(() => toast.classList.remove('is-visible'), 2000);
 }
 
 function ingredientChip(item, baseServings, targetServings) {

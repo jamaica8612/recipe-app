@@ -49,10 +49,9 @@ function resolveCategoryId(value, categories) {
 }
 
 function sourceLabel(source) {
-  if (source === 'cache') return '캐시 결과';
+  if (source === 'cache') return '저장된 분석 결과';
   if (source === 'manual') return '수동 입력';
-  if (source === 'mock') return '목업 분석';
-  return 'Gemini 결과';
+  return 'Gemini 분석 결과';
 }
 
 function readRecipeFromForm(form, draft) {
@@ -95,6 +94,7 @@ function readRecipeFromForm(form, draft) {
     ingredients,
     steps,
     tips: parseLines(form.tips.value),
+    commentInsights: Array.isArray(analysis.commentInsights) ? analysis.commentInsights : [],
     analysisMeta: {
       source: draft.response.source,
       confidence: analysis.confidence ?? null,
@@ -175,10 +175,23 @@ export function renderPreview(draftId) {
       `) : raw(`
         <div class="callout callout--olive">
           <span class="icon">✓</span>
-          <div><strong>분석 완료</strong><br>${response.source} 결과입니다. 저장 전 내용을 확인하고 고쳐주세요.</div>
+          <div><strong>분석 완료</strong><br>${sourceLabel(response.source)}입니다. 저장 전 내용을 확인하고 고쳐주세요.</div>
         </div>
       `)}
       ${raw(reviewNote)}
+      ${Array.isArray(analysis.commentInsights) && analysis.commentInsights.length > 0 ? raw(`
+        <div class="comment-insights">
+          <div class="comment-insights-title">💬 댓글 주요 의견</div>
+          <div class="comment-insights-list">
+            ${analysis.commentInsights.map((i) => `
+              <div class="comment-insight-item">
+                <span class="comment-insight-emoji">${esc(String(i.emoji || '💬'))}</span>
+                <span class="comment-insight-text">${esc(String(i.text || ''))}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `) : ''}
       ${canReportAnalysis ? raw(`
         <button class="btn btn--secondary btn--block" type="button" data-action="report-analysis">
           분석 결과 신고
@@ -306,15 +319,11 @@ export function bindPreview(rootEl, navigate, draftId) {
 
     if (savedRecipe) {
       try {
-        const remote = await saveRecipeToSupabase(savedRecipe);
-        if (status) {
-          status.textContent = remote.skipped
-            ? '로컬에 저장했습니다. 로그인하면 Supabase에도 백업할 수 있어요.'
-            : '로컬과 Supabase에 저장했습니다.';
-        }
+        await saveRecipeToSupabase(savedRecipe);
+        if (status) status.textContent = '저장했습니다.';
       } catch (err) {
         console.warn('Supabase save failed', err);
-        if (status) status.textContent = '로컬에 저장했습니다. Supabase 저장은 계정 화면에서 다시 백업할 수 있어요.';
+        if (status) status.textContent = '저장에 실패했습니다. 네트워크 연결을 확인해주세요.';
       }
     }
 

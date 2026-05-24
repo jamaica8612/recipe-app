@@ -10,8 +10,11 @@ import { renderMembers, bindMembers } from './views/members.js';
 import { renderSettings, bindSettings } from './views/settings.js?v=20260521-icons-v1';
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
-import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v5';
+import { renderFridge, bindFridge } from './views/fridge.js?v=20260522-shopping-v1';
+import { getSupabaseClient } from './supabaseClient.js';
+import { loadSupabaseDataIntoLocalState } from './api/syncSupabase.js';
 import { icon } from './icons.js';
+import { renderSharedView } from './views/shared.js';
 
 const app = document.querySelector('#app');
 let activeRoute = currentRoute();
@@ -91,14 +94,86 @@ async function render(route = currentRoute()) {
   bind(app);
 }
 
-// 공유 파라미터가 쿼리 스트링에 있는 경우, 분석 화면으로 유도
-const params = new URLSearchParams(location.search);
-if (params.has('url') || params.has('text') || params.has('v')) {
-  if (location.hash !== '#/analyze') {
-    location.hash = '#/analyze';
+function showLoadingScreen(message = '불러오는 중…') {
+  app.className = 'app-shell no-nav';
+  app.innerHTML = `
+    <div class="app-content">
+      <main class="app-body">
+        <div class="loading-screen">
+          <div class="loading-dots">●●●</div>
+          <div class="loading-msg">${message}</div>
+        </div>
+      </main>
+    </div>
+  `;
+}
+
+async function init() {
+  // Share Target 처리 — 유튜브 앱에서 공유하기로 열렸을 때
+  // manifest share_target: action=app.html?url=YOUTUBE_URL
+  const searchParams = new URLSearchParams(location.search);
+  let sharedUrl = searchParams.get('url') || searchParams.get('text') || searchParams.get('v') || '';
+  if (sharedUrl && !sharedUrl.includes('youtube.com') && !sharedUrl.includes('youtu.be') && /^[\w-]{11}$/.test(sharedUrl.trim())) {
+    sharedUrl = `https://youtu.be/${sharedUrl.trim()}`;
+  }
+
+  if (sharedUrl && (sharedUrl.includes('youtube.com') || sharedUrl.includes('youtu.be'))) {
+    // URL 파라미터 히스토리에서 제거 (깔끔하게)
+    history.replaceState(null, '', location.pathname + (location.hash || ''));
+    sessionStorage.setItem('recipe-app:share-url', sharedUrl);
+  }
+
+  // 공유 링크 경로 → 인증 없이 바로 렌더
+  const initialHash = location.hash;
+  if (initialHash.startsWith('#/shared/')) {
+    const code = initialHash.slice('#/shared/'.length).split('/')[0];
+    if (code) {
+      await renderSharedView(code, app);
+      // hashchange 감지: 앱 내부 링크(#/account 등) 클릭 시 정상 앱으로 전환
+      window.addEventListener('hashchange', () => {
+        if (!location.hash.startsWith('#/shared/')) {
+          init();
+        }
+      }, { once: true });
+      return;
+    }
+  }
+
+  // 로그인 상태 확인
+  let user = null;
+  try {
+    const { data } = await getSupabaseClient().auth.getUser();
+    user = data?.user || null;
+  } catch {
+    user = null;
+  }
+
+  // 로그인 안 됐으면 계정 화면으로
+  if (!user) {
+    await render({ path: 'account', params: [] });
+    onRouteChange(render);
+    subscribe(() => render(activeRoute));
+    return;
+  }
+
+  // 로그인됐으면 Supabase에서 데이터 로드
+  showLoadingScreen('레시피를 불러오는 중…');
+  try {
+    await loadSupabaseDataIntoLocalState();
+  } catch (err) {
+    console.warn('Supabase load failed', err);
+    // 로드 실패해도 빈 상태로 앱은 열림
+  }
+
+  onRouteChange(render);
+  subscribe(() => render(activeRoute));
+
+  // 공유 URL이 있으면 분석 화면으로 바로 이동
+  if (sessionStorage.getItem('recipe-app:share-url')) {
+    navigate('/analyze');
+  } else {
+    render();
   }
 }
 
-onRouteChange(render);
-subscribe(() => render(activeRoute));
-render();
+init();

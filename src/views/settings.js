@@ -9,7 +9,7 @@ const DEFAULT_CATEGORY_IDS = new Set(['all', 'korean', 'western', 'japanese', 'c
 
 export function renderSettings() {
   const settings = getBackendSettings();
-  const mode = settings.analyzeEndpoint ? 'Edge Function 연결 모드' : '목업 분석 모드';
+  const mode = settings.analyzeEndpoint ? '분석 서비스 연결됨' : '분석 서비스 미설정';
   const state = getState();
   const categoryList = state.categories
     .filter((category) => category.id !== 'all')
@@ -47,20 +47,20 @@ export function renderSettings() {
 
       <div class="callout callout--info">
         <span class="icon">i</span>
-        <div><strong>${mode}</strong><br>Supabase Function URL과 anon key를 저장하면 분석 화면에서 실제 백엔드로 요청합니다.</div>
+        <div><strong>${mode}</strong><br>서비스 주소와 접근 키를 저장하면 분석 화면에서 실제 AI 서비스로 요청합니다.</div>
       </div>
 
       <form id="settings-form" class="stack">
         <label class="field">
-          <span class="field-label">Analyze Function URL</span>
-          <input class="input" name="analyzeEndpoint" placeholder="https://...functions.supabase.co/analyze-video" value="${settings.analyzeEndpoint}" />
+          <span class="field-label">분석 서비스 주소</span>
+          <input class="input" name="analyzeEndpoint" placeholder="https://..." value="${settings.analyzeEndpoint}" />
         </label>
         <label class="field">
-          <span class="field-label">Supabase anon key</span>
+          <span class="field-label">접근 키</span>
           <textarea class="textarea" name="supabaseAnonKey" rows="4" placeholder="eyJ...">${settings.supabaseAnonKey}</textarea>
         </label>
         <button class="btn btn--primary btn--lg btn--block" type="submit">설정 저장</button>
-        <button class="btn btn--secondary btn--block" type="button" data-action="clear-settings">목업 모드로 되돌리기</button>
+        <button class="btn btn--secondary btn--block" type="button" data-action="clear-settings">설정 지우기</button>
         <div class="field-help" id="settings-status"></div>
       </form>
 
@@ -120,10 +120,10 @@ export function bindSettings(rootEl, navigate) {
       setCategoryStatus(rootEl, '카테고리 삭제 중...');
       try {
         await deleteCategoryFromSupabase(category);
-        setCategoryStatus(rootEl, 'Supabase에서도 삭제했습니다.');
+        setCategoryStatus(rootEl, '삭제했습니다.');
       } catch (err) {
         console.warn('Supabase category delete failed', err);
-        setCategoryStatus(rootEl, '로컬에서 삭제했습니다. Supabase는 계정 화면에서 다시 백업해 주세요.');
+        setCategoryStatus(rootEl, '삭제에 실패했습니다. 네트워크 연결을 확인해주세요.');
       } finally {
         deleteCategory(category.id);
       }
@@ -165,11 +165,11 @@ export function bindSettings(rootEl, navigate) {
     if (category) {
       setCategoryStatus(rootEl, editingId ? '카테고리 수정 중...' : '카테고리 저장 중...');
       try {
-        const result = await syncCategoryToSupabase(category);
-        setCategoryStatus(rootEl, result.skipped ? '로컬에 저장했습니다. 로그인하면 백업할 수 있어요.' : 'Supabase에 저장했습니다.');
+        await syncCategoryToSupabase(category);
+        setCategoryStatus(rootEl, '저장했습니다.');
       } catch (err) {
         console.warn('Supabase category sync failed', err);
-        setCategoryStatus(rootEl, '로컬에 저장했습니다. Supabase 저장은 계정 화면에서 다시 백업할 수 있어요.');
+        setCategoryStatus(rootEl, '저장에 실패했습니다. 네트워크 연결을 확인해주세요.');
       }
     }
     resetCategoryForm(rootEl);

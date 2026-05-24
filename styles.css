@@ -167,6 +167,7 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .btn--sm   { min-height: 34px; padding: 6px 12px; font-size: var(--t-xs); }
 .btn--lg   { min-height: 46px; padding: 14px 24px; font-size: var(--t-body); }
 .btn--block{ width: 100%; }
+.btn--block + .btn--block { margin-top: 8px; }
 .btn[disabled] { background: var(--c-surface-3); color: var(--c-ink-3);
                  cursor: not-allowed; border-color: transparent; }
 
@@ -352,6 +353,33 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .row     { display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center; }
 .stack > * + * { margin-top: var(--s-3); }
 
+/* Comment insights */
+.comment-insights {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 2px;
+}
+.comment-insights-title {
+  font-size: var(--t-xs);
+  font-weight: 700;
+  color: var(--c-ink-2);
+  letter-spacing: .03em;
+  margin-bottom: 10px;
+}
+.comment-insights-list { display: flex; flex-direction: column; gap: 8px; }
+.comment-insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: var(--t-sm);
+  color: var(--c-ink);
+  line-height: 1.45;
+}
+.comment-insight-emoji { flex-shrink: 0; font-size: 1.1rem; line-height: 1.3; }
+.comment-insight-text { flex: 1; }
+
 /* Token table (shared) */
 .token-table { width: 100%; font-size: var(--t-sm); border-collapse: collapse;
                background: var(--c-surface); border: 1px solid var(--c-line);
@@ -363,3 +391,91 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .token-table tr:last-child td { border-bottom: none; }
 .token-table tbody tr:hover   { background: var(--c-surface-2); }
 .token-table td code { font-size: var(--t-xs); }
+
+/* =========================================================
+   12. SHARE
+   ========================================================= */
+.share-box { margin-top: var(--s-3); }
+
+.share-active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-line);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+}
+.share-active-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--c-ink-2);
+}
+.share-active-btns { display: flex; gap: var(--s-2); }
+
+/* 토스트 알림 */
+.share-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--c-ink);
+  color: var(--c-ink-inv);
+  font-size: var(--t-sm);
+  padding: 8px 18px;
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 999;
+}
+.share-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* 공유 뷰 — 배지 */
+.shared-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,.45);
+  color: #fff;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
+/* 공유 뷰 — CTA */
+.shared-cta { text-align: center; }
+.shared-cta-msg {
+  font-size: var(--t-sm);
+  color: var(--c-ink-3);
+  margin-bottom: var(--s-3);
+}
+
+/* 썸네일 없는 커버 기본색 */
+.v2-cover.no-thumb { background: var(--c-bg-sunk); min-height: 120px; }
+
+/* btn 크기 변형 */
+.btn--sm { font-size: var(--t-xs); padding: 5px 12px; }
+.btn--outline {
+  background: transparent;
+  border: 1.5px solid var(--c-line-2);
+  color: var(--c-ink-2);
+}
+.btn--outline:hover { background: var(--c-surface-3); }
+.btn--ghost {
+  background: transparent;
+  border: none;
+  color: var(--c-ink-3);
+}
+.btn--ghost:hover { color: var(--c-terra); }
