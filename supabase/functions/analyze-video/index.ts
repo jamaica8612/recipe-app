@@ -426,22 +426,42 @@ async function callGemini({
     },
   });
 
-  const maxAttempts = 2;
+  // 모델당 최대 15초 — 초과 시 abort해서 다음 모델로 넘어감
+  // (Gemini 장애 시 3모델 × 15s = 최대 45s 소비 후 OpenRouter 폴백 진입)
+  const CALL_TIMEOUT_MS = 15_000;
   let response: Response | null = null;
-  let attempt = 0;
-  while (attempt < maxAttempts) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), CALL_TIMEOUT_MS);
+  try {
     response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: requestBody,
-    }).catch(() => null);
+      signal: ac.signal,
+    });
+  } catch {
+    response = null;
+  } finally {
+    clearTimeout(timer);
+  }
 
-    const transient = !response || response.status === 503 || response.status === 429;
-    if (!transient) break;
-    attempt += 1;
-    if (attempt < maxAttempts) {
-      console.error(`[gemini] transient status=${response?.status ?? "network"} model=${model} attempt=${attempt}/retrying`);
-      await new Promise((r) => setTimeout(r, 1200));
+  // 429/503 → 한 번만 재시도
+  if (response?.status === 429 || response?.status === 503) {
+    console.error(`[gemini] transient status=${response.status} model=${model}, retrying once`);
+    await new Promise((r) => setTimeout(r, 1200));
+    const ac2 = new AbortController();
+    const timer2 = setTimeout(() => ac2.abort(), CALL_TIMEOUT_MS);
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: requestBody,
+        signal: ac2.signal,
+      });
+    } catch {
+      response = null;
+    } finally {
+      clearTimeout(timer2);
     }
   }
 
