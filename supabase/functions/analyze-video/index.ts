@@ -11,7 +11,7 @@ type FailureReason =
 
 type AnalyzeResponse = {
   ok: boolean;
-  source: "cache" | "gemini" | "mock" | "edge";
+  source: "cache" | "gemini" | "openrouter" | "mock" | "edge";
   analysis: Record<string, unknown> | null;
   failure: null | {
     reason: FailureReason;
@@ -132,7 +132,7 @@ serve(async (req) => {
   // 댓글 가져오기 + Gemini 분석을 병렬 실행
   // Gemini는 영상만 분석 (댓글 없이) → 빠르고 저렴
   // Qwen은 댓글만 요약 → 한국어 품질 우수, 저렴
-  const [comments, analysisResult] = await Promise.all([
+  const [comments, geminiResult] = await Promise.all([
     youtubeApiKey ? fetchYouTubeComments(videoId, youtubeApiKey) : Promise.resolve([]),
     geminiKey
       ? analyzeWithGemini({
@@ -146,9 +146,21 @@ serve(async (req) => {
       : Promise.resolve({ ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const }),
   ]);
 
+  // Gemini 전체 실패 시 OpenRouter 텍스트 기반 폴백
+  type AnyAnalysisResult =
+    | { ok: true; source: "gemini" | "openrouter" | "mock"; model?: string; analysis: ReturnType<typeof makeMockAnalysis> }
+    | { ok: false; reason: FailureReason; message?: string };
+  let analysisResult: AnyAnalysisResult = geminiResult as AnyAnalysisResult;
+  if (!geminiResult.ok && (geminiResult as { reason: FailureReason }).reason === "api_unavailable" && openrouterKey) {
+    console.log("[fallback] Gemini unavailable, trying OpenRouter text fallback");
+    const orResult = await analyzeWithOpenRouter({ videoId, youtubeApiKey: youtubeApiKey || null, openrouterKey });
+    if (orResult.ok) analysisResult = orResult as AnyAnalysisResult;
+  }
+
   if (!analysisResult.ok) {
-    await logFailure(supabase, videoId, userId, analysisResult.reason, analysisResult.message);
-    return json(failure("gemini", analysisResult.reason), 200);
+    const failResult = analysisResult as { reason: FailureReason; message?: string };
+    await logFailure(supabase, videoId, userId, failResult.reason, failResult.message);
+    return json(failure("gemini", failResult.reason), 200);
   }
 
   // 댓글 요약: OpenRouter Qwen이 있으면 사용, 없으면 빈 배열
@@ -170,7 +182,11 @@ serve(async (req) => {
     status: analysis.needsReview ? "needs_review" : "ready",
     needs_review: analysis.needsReview,
     thumbnail_url_yt: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    model_version: analysisResult.source === "gemini" ? analysisResult.model : "edge-mock-v1",
+    model_version: analysisResult.source === "gemini"
+      ? (analysisResult as { model: string }).model
+      : analysisResult.source === "openrouter"
+        ? `openrouter-${(analysisResult as { model: string }).model}`
+        : "edge-mock-v1",
     last_validated_at: new Date().toISOString(),
   });
 
@@ -676,6 +692,145 @@ async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<st
   } catch {
     return [];
   }
+}
+
+// OpenRouter 텍스트 폴백 — Gemini 전체 실패 시
+async function analyzeWithOpenRouter({
+  videoId,
+  youtubeApiKey,
+  openrouterKey,
+}: {
+  videoId: string;
+  youtubeApiKey: string | null;
+  openrouterKey: string;
+}): Promise<
+  | { ok: true; source: "openrouter"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
+  | { ok: false; reason: FailureReason; message?: string }
+> {
+  const [metadata, transcript] = await Promise.all([
+    youtubeApiKey ? fetchVideoMetadata(videoId, youtubeApiKey) : Promise.resolve(null),
+    fetchTranscript(videoId),
+  ]);
+
+  const titlePart = metadata?.title ? `제목: ${metadata.title}` : "";
+  const descPart = metadata?.description ? `설명:\n${metadata.description.slice(0, 3000)}` : "";
+  const transcriptPart = transcript ? `자막/스크립트:\n${transcript.slice(0, 4000)}` : "";
+  const context = [titlePart, descPart, transcriptPart].filter(Boolean).join("\n\n");
+
+  if (!context.trim()) {
+    return { ok: false, reason: "api_unavailable", message: "영상 텍스트 정보를 가져올 수 없습니다." };
+  }
+
+  const prompt =
+    `다음은 YouTube 요리 영상의 텍스트 정보입니다. 이를 분석해서 레시피를 추출하세요.\n` +
+    `요리 영상이 아니면 isRecipe를 false로 반환하세요.\n` +
+    `재료명, 수량, 단위, 조리 단계, 팁을 추출하세요.\n` +
+    `확실하지 않은 값은 빈 문자열 또는 0으로 두고 confidence를 낮추세요.\n` +
+    `timestampSec은 자막에서 확인된 경우에만 입력하고, 모르면 0으로 하세요.\n\n` +
+    `${context}\n\n` +
+    `반드시 다음 JSON 형식으로만 응답하세요:\n` +
+    `{"isRecipe":true,"confidence":0.8,"title":"레시피 제목","channelName":"","suggestedCategory":"한식","servings":2,"cookTimeMin":30,` +
+    `"ingredients":[{"name":"재료명","amount":"수량","unit":"단위"}],` +
+    `"steps":[{"order":1,"text":"단계 설명","timestampSec":0}],"tips":["팁"]}`;
+
+  const models = ["deepseek/deepseek-chat", "qwen/qwen-2.5-72b-instruct"];
+
+  for (const model of models) {
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openrouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://jamaica8612.github.io/recipe-app/",
+          "X-Title": "Recipe App",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 2000,
+          temperature: 0.2,
+          response_format: { type: "json_object" },
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`[openrouter] model=${model} status=${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const text = (data.choices?.[0]?.message?.content || "").trim();
+      if (!text) continue;
+
+      let parsed: unknown;
+      try {
+        const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/({[\s\S]*})/);
+        parsed = JSON.parse(jsonMatch ? jsonMatch[1] : text);
+      } catch {
+        console.error(`[openrouter] parse error model=${model}`);
+        continue;
+      }
+
+      const normalized = normalizeGeminiRecipe(parsed, videoId);
+      if (!normalized) continue;
+      if (!normalized.isRecipe) return { ok: false, reason: "not_recipe" };
+
+      return {
+        ok: true,
+        source: "openrouter",
+        model,
+        analysis: { ...normalized, needsReview: normalized.confidence < 0.6 } as ReturnType<typeof makeMockAnalysis>,
+      };
+    } catch (err) {
+      console.error(`[openrouter] model=${model} error=${err}`);
+    }
+  }
+
+  return { ok: false, reason: "api_unavailable", message: "OpenRouter 분석 실패" };
+}
+
+async function fetchVideoMetadata(
+  videoId: string,
+  apiKey: string,
+): Promise<{ title: string; description: string } | null> {
+  try {
+    const url =
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const snippet = data.items?.[0]?.snippet;
+    if (!snippet) return null;
+    return { title: snippet.title || "", description: snippet.description || "" };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTranscript(videoId: string): Promise<string | null> {
+  // 한국어 자막 → 영어 자막 → 자동생성 한국어/영어 순으로 시도
+  const langs = ["ko", "en", "a.ko", "a.en"];
+  for (const lang of langs) {
+    try {
+      const url =
+        `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&lang=${lang}&fmt=json3`;
+      const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (!Array.isArray(data.events) || !data.events.length) continue;
+      const text = (data.events as Array<{ segs?: Array<{ utf8?: string }> }>)
+        .flatMap((ev) => ev.segs || [])
+        .map((seg) => seg.utf8 || "")
+        .join("")
+        .replace(/\n/g, " ")
+        .trim();
+      if (text.length > 100) return text;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 function makeMockAnalysis(videoId: string) {
