@@ -4,7 +4,7 @@
 import { RECIPES, MEMBERS, CATEGORIES } from './data.js';
 import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from './ingredientMatch.js';
 
-const KEY = 'recipe-app:v1';
+const KEY = 'recipe-app:v2';
 
 function loadFromStorage() {
   try {

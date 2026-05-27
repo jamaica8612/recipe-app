@@ -1,5 +1,7 @@
 import { currentRoute, onRouteChange, go } from './router.js';
-import { subscribe } from './store.js';
+import { subscribe, getState } from './store.js';
+import { getSupabaseClient } from './supabaseClient.js';
+import { loadSupabaseDataIntoLocalState } from './api/syncSupabase.js';
 import { renderHome, bindHome } from './views/home.js?v=20260521-restore-v1';
 import { renderAnalyze, bindAnalyze } from './views/analyze.js';
 import { renderPreview, bindPreview } from './views/preview.js?v=20260521-channel-v1';
@@ -95,3 +97,17 @@ async function render(route = currentRoute()) {
 onRouteChange(render);
 subscribe(() => render(activeRoute));
 render();
+
+// 로그인 상태면 자동으로 Supabase에서 데이터 불러오기
+getSupabaseClient().auth.onAuthStateChange(async (event, session) => {
+  if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+    const state = getState();
+    if ((state.recipes || []).length === 0) {
+      try {
+        await loadSupabaseDataIntoLocalState();
+      } catch (err) {
+        console.warn('Supabase 자동 불러오기 실패:', err);
+      }
+    }
+  }
+});
