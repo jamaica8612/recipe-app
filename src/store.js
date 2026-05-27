@@ -31,7 +31,7 @@ function defaultState() {
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry' },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry', pantryFocusId: null, pantrySort: 'expiry' },
   };
 }
 
@@ -67,6 +67,7 @@ function normalizeFridgeItems(items) {
       id: item?.id || `fi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: String(item?.name || '').trim(),
       checked: Boolean(item?.checked),
+      storage: item?.storage === 'pantry' ? 'pantry' : 'fridge',
       purchasedAt: normalizeDateValue(item?.purchasedAt || item?.purchased_at),
       expiresAt: normalizeDateValue(item?.expiresAt || item?.expires_at),
     }))
@@ -114,12 +115,14 @@ export function setViewMode(viewMode) {
   const next = allowed.includes(viewMode) ? viewMode : 'category';
   set((s) => ({ ...s, filter: { ...s.filter, viewMode: next } }));
 }
-export function setFridgeFocusItem(id) {
-  set((s) => ({ ...s, filter: { ...s.filter, fridgeFocusId: id || null } }));
+export function setFridgeFocusItem(id, storage = 'fridge') {
+  const key = storage === 'pantry' ? 'pantryFocusId' : 'fridgeFocusId';
+  set((s) => ({ ...s, filter: { ...s.filter, [key]: id || null } }));
 }
-export function setFridgeSort(sort) {
+export function setFridgeSort(sort, storage = 'fridge') {
   const next = sort === 'name' ? 'name' : 'expiry';
-  set((s) => ({ ...s, filter: { ...s.filter, fridgeSort: next } }));
+  const key = storage === 'pantry' ? 'pantrySort' : 'fridgeSort';
+  set((s) => ({ ...s, filter: { ...s.filter, [key]: next } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({
@@ -230,7 +233,10 @@ export function addFridgeItem(input) {
   const clean = String(payload.name || '').trim();
   if (!clean) return null;
 
-  const exists = state.fridgeItems.some((item) => item.name.toLowerCase() === clean.toLowerCase());
+  const storage = payload.storage === 'pantry' ? 'pantry' : 'fridge';
+  const exists = state.fridgeItems.some(
+    (item) => (item.storage || 'fridge') === storage && item.name.toLowerCase() === clean.toLowerCase(),
+  );
   if (exists) return null;
 
   const id = 'fi' + (Date.now() % 1e8).toString(36);
@@ -240,6 +246,7 @@ export function addFridgeItem(input) {
       id,
       name: clean,
       checked: true,
+      storage,
       purchasedAt: normalizeDateValue(payload.purchasedAt),
       expiresAt: normalizeDateValue(payload.expiresAt),
     }],

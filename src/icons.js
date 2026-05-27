@@ -13,6 +13,8 @@ export function icon(name, size = 20) {
       return `<svg width="${size}" height="${size}" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 3.8 16 10 5.5 16.2z"/></svg>`;
     case 'fridge':
       return `<svg ${attrs}><rect x="5" y="2.5" width="10" height="15" rx="1.5"/><path d="M5 8h10M7.5 5v1M7.5 10.5v3"/></svg>`;
+    case 'pantry':
+      return `<svg ${attrs}><rect x="3.5" y="4" width="13" height="12" rx="1"/><path d="M3.5 8h13M3.5 12h13M7 6v0M7 10v0M7 14v0"/></svg>`;
     case 'settings':
       return `<svg ${attrs}><circle cx="10" cy="10" r="2.5"/><path d="M16.5 10c0-.6-.1-1.2-.2-1.7l1.4-1.1-1.6-2.8-1.7.5a6 6 0 0 0-3-1.7l-.4-1.8h-3l-.4 1.8a6 6 0 0 0-3 1.7l-1.7-.5-1.6 2.8 1.4 1.1c-.1.5-.2 1.1-.2 1.7s.1 1.2.2 1.7l-1.4 1.1 1.6 2.8 1.7-.5a6 6 0 0 0 3 1.7l.4 1.8h3l.4-1.8a6 6 0 0 0 3-1.7l1.7.5 1.6-2.8-1.4-1.1c.1-.5.2-1.1.2-1.7z"/></svg>`;
     case 'user':

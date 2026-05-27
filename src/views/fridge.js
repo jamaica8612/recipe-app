@@ -12,26 +12,54 @@ import { deleteFridgeItemFromSupabase, syncFridgeItemToSupabase } from '../api/s
 import { icon } from '../icons.js';
 import { hasFuzzyOverlap, makeIngredientTerms } from '../ingredientMatch.js';
 
-export function renderFridge() {
+const STORAGE_META = {
+  fridge: {
+    title: '냉장고',
+    iconName: 'fridge',
+    activeNav: 'fridge',
+    focusKey: 'fridgeFocusId',
+    sortKey: 'fridgeSort',
+    placeholder: '있는 재료 입력: 두부, 대파, 양파...',
+    emptyEmoji: '🧊',
+    emptyTitle: '아직 등록한 재료가 없어요',
+    emptyDesc: '냉장고에 있는 재료를 하나씩 넣어보세요',
+    promptPlaceholder: '예: 김치, 돼지고기, 두부처럼 냉장고에 있는 재료를 입력하세요.',
+  },
+  pantry: {
+    title: '실온보관',
+    iconName: 'pantry',
+    activeNav: 'pantry',
+    focusKey: 'pantryFocusId',
+    sortKey: 'pantrySort',
+    placeholder: '실온 보관 재료 입력: 라면, 통조림, 양파...',
+    emptyEmoji: '🥫',
+    emptyTitle: '아직 등록한 실온 재료가 없어요',
+    emptyDesc: '실온 보관 중인 재료를 하나씩 넣어보세요',
+    promptPlaceholder: '예: 라면, 통조림, 파스타처럼 실온 보관 중인 재료를 입력하세요.',
+  },
+};
+
+export function renderFridge(storage = 'fridge') {
+  const meta = STORAGE_META[storage] || STORAGE_META.fridge;
   const s = getState();
-  const items = s.fridgeItems || [];
-  const fridgeSort = s.filter.fridgeSort || 'expiry';
-  const focusedItem = items.find((item) => item.id === s.filter.fridgeFocusId);
+  const items = (s.fridgeItems || []).filter((item) => (item.storage || 'fridge') === storage);
+  const sortMode = s.filter[meta.sortKey] || 'expiry';
+  const focusedItem = items.find((item) => item.id === s.filter[meta.focusKey]);
   const activeItems = focusedItem ? [focusedItem] : items.filter((item) => item.checked);
   const matches = rankRecipesByFridge(s.recipes || [], activeItems);
   const urgentCount = items.filter((item) => getExpiryState(item).tone === 'danger' || getExpiryState(item).tone === 'warn').length;
 
   return {
     header: html`
-      <div class="title">${raw(icon('fridge', 18))}<span>냉장고</span></div>
+      <div class="title">${raw(icon(meta.iconName, 18))}<span>${meta.title}</span></div>
       <div style="width:36px"></div>
     `,
     body: html`
-      <form class="fridge-form" data-action="add-fridge-item">
+      <form class="fridge-form" data-action="add-fridge-item" data-storage="${storage}">
         <label class="field">
           <span class="field-label">재료</span>
           <input class="input" name="ingredient" autocomplete="off"
-                 placeholder="있는 재료 입력: 두부, 대파, 양파..." />
+                 placeholder="${meta.placeholder}" />
         </label>
         <label class="field">
           <span class="field-label">입고일</span>
@@ -51,11 +79,11 @@ export function renderFridge() {
             <p class="section-note">${urgentCount ? `임박/만료 ${urgentCount}개 먼저 확인하세요` : '재료를 누르면 그 재료로 만들 수 있는 레시피를 보여줘요'}</p>
           </div>
         </div>
-        <div class="fridge-sort" aria-label="냉장고 정렬">
-          <button type="button" data-action="set-fridge-sort" data-sort="expiry" class="${fridgeSort === 'expiry' ? 'is-on' : ''}">유통기한순</button>
-          <button type="button" data-action="set-fridge-sort" data-sort="name" class="${fridgeSort === 'name' ? 'is-on' : ''}">이름순</button>
+        <div class="fridge-sort" aria-label="${meta.title} 정렬">
+          <button type="button" data-action="set-fridge-sort" data-sort="expiry" class="${sortMode === 'expiry' ? 'is-on' : ''}">유통기한순</button>
+          <button type="button" data-action="set-fridge-sort" data-sort="name" class="${sortMode === 'name' ? 'is-on' : ''}">이름순</button>
         </div>
-        ${raw(renderFridgeItems(items, focusedItem?.id, fridgeSort))}
+        ${raw(renderFridgeItems(items, focusedItem?.id, sortMode, meta))}
       </section>
 
       <section class="fridge-section">
@@ -66,22 +94,22 @@ export function renderFridge() {
           </div>
           ${focusedItem ? raw(`<button class="ghost-btn fridge-clear-focus" type="button" data-action="clear-fridge-focus">전체 보기</button>`) : ''}
         </div>
-        ${raw(renderMatches(matches, activeItems))}
+        ${raw(renderMatches(matches, activeItems, meta))}
       </section>
     `,
     flush: false,
     showNav: true,
-    activeNav: 'fridge',
+    activeNav: meta.activeNav,
   };
 }
 
-function renderFridgeItems(items, focusedId, sortMode) {
+function renderFridgeItems(items, focusedId, sortMode, meta = STORAGE_META.fridge) {
   if (!items.length) {
     return html`
       <div class="empty mini-empty">
-        <span class="emo">🧊</span>
-        <div class="ttl">아직 등록한 재료가 없어요</div>
-        <div>냉장고에 있는 재료를 하나씩 넣어보세요</div>
+        <span class="emo">${meta.emptyEmoji}</span>
+        <div class="ttl">${meta.emptyTitle}</div>
+        <div>${meta.emptyDesc}</div>
       </div>
     `;
   }
@@ -111,14 +139,14 @@ function renderFridgeItem(item, focusedId) {
   `;
 }
 
-function renderMatches(matches, activeItems) {
+function renderMatches(matches, activeItems, meta = STORAGE_META.fridge) {
   if (!activeItems.length) {
     return html`
       <div class="callout">
         <span class="icon">🍳</span>
         <div>
           <strong>재료를 넣으면 바로 추천해드려요</strong><br>
-          예: 김치, 돼지고기, 두부처럼 냉장고에 있는 재료를 입력하세요.
+          ${meta.promptPlaceholder}
         </div>
       </div>
     `;
@@ -216,7 +244,8 @@ function dedupeMatches(matches) {
   return Array.from(map.values());
 }
 
-export function bindFridge(rootEl, navigate) {
+export function bindFridge(rootEl, navigate, storage = 'fridge') {
+  const meta = STORAGE_META[storage] || STORAGE_META.fridge;
   rootEl.addEventListener('submit', (e) => {
     const form = e.target.closest('[data-action="add-fridge-item"]');
     if (!form) return;
@@ -224,6 +253,7 @@ export function bindFridge(rootEl, navigate) {
     const input = form.elements.ingredient;
     const id = addFridgeItem({
       name: input.value,
+      storage,
       purchasedAt: form.elements.purchasedAt?.value,
       expiresAt: form.elements.expiresAt?.value,
     });
@@ -247,11 +277,12 @@ export function bindFridge(rootEl, navigate) {
         console.warn('Supabase fridge delete failed', err);
       });
     } else if (action === 'focus-fridge-item') {
-      setFridgeFocusItem(getState().filter.fridgeFocusId === id ? null : id);
+      const current = getState().filter[meta.focusKey];
+      setFridgeFocusItem(current === id ? null : id, storage);
     } else if (action === 'clear-fridge-focus') {
-      setFridgeFocusItem(null);
+      setFridgeFocusItem(null, storage);
     } else if (action === 'set-fridge-sort') {
-      setFridgeSort(target.dataset.sort);
+      setFridgeSort(target.dataset.sort, storage);
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
     }
