@@ -13,6 +13,7 @@ import { renderSettings, bindSettings } from './views/settings.js?v=20260527-gma
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
 import { renderFridge, bindFridge } from './views/fridge.js?v=20260527-freezer-v1';
+import { renderSharedView } from './views/shared.js';
 import { icon } from './icons.js';
 
 const app = document.querySelector('#app');
@@ -94,9 +95,24 @@ async function render(route = currentRoute()) {
   bind(app);
 }
 
+// #/shared/:code → 비로그인 공유 뷰 (라우터 밖에서 처리)
+const initialHash = location.hash;
+if (initialHash.startsWith('#/shared/')) {
+  const code = initialHash.slice('#/shared/'.length).split('/')[0];
+  if (code) {
+    renderSharedView(code, app);
+    window.addEventListener('hashchange', () => {
+      if (!location.hash.startsWith('#/shared/')) render();
+    }, { once: true });
+  } else {
+    render();
+  }
+} else {
+  render();
+}
+
 onRouteChange(render);
 subscribe(() => render(activeRoute));
-render();
 
 // 로그인 상태면 자동으로 Supabase에서 데이터 불러오기
 getSupabaseClient().auth.onAuthStateChange(async (event, session) => {

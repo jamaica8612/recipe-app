@@ -184,6 +184,13 @@ export function deleteRecipe(id) {
   set((s) => ({ ...s, recipes: s.recipes.filter((r) => r.id !== id) }));
 }
 
+export function setRecipeShareCode(id, shareCode) {
+  set((s) => ({
+    ...s,
+    recipes: s.recipes.map((r) => (r.id === id ? { ...r, shareCode: shareCode || null } : r)),
+  }));
+}
+
 export function addCategory(category) {
   const id = 'c' + (Date.now() % 1e8).toString(36);
   set((s) => ({ ...s, categories: [...s.categories, { ...category, id }] }));
