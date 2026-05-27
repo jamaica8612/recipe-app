@@ -14,7 +14,7 @@
    - Application type: **Web application**
    - Authorized redirect URIs:
      ```
-     https://xrrdokcjhjqdfvwtbenl.functions.supabase.co/gmail-oauth-callback
+     https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/gmail-oauth-callback
      ```
    - 발급된 **Client ID**, **Client Secret** 복사
 
@@ -23,7 +23,7 @@
 ```bash
 supabase secrets set GOOGLE_CLIENT_ID=<from step 1>
 supabase secrets set GOOGLE_CLIENT_SECRET=<from step 1>
-supabase secrets set GOOGLE_REDIRECT_URI=https://xrrdokcjhjqdfvwtbenl.functions.supabase.co/gmail-oauth-callback
+supabase secrets set GOOGLE_REDIRECT_URI=https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/gmail-oauth-callback
 supabase secrets set APP_URL=https://YOUR-DEPLOYED-APP/app.html
 supabase secrets set INGEST_CRON_TOKEN=<랜덤 문자열 32자>
 # GEMINI_API_KEY 는 analyze-video와 공유
@@ -50,7 +50,7 @@ select cron.schedule(
   '*/10 * * * *',
   $$
   select net.http_post(
-    url := 'https://xrrdokcjhjqdfvwtbenl.functions.supabase.co/ingest-orders',
+    url := 'https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/ingest-orders',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-cron-token', '<INGEST_CRON_TOKEN 값과 동일>'
@@ -66,7 +66,7 @@ select cron.schedule(
 ```js
 const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
 authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
-authUrl.searchParams.set("redirect_uri", "https://xrrdokcjhjqdfvwtbenl.functions.supabase.co/gmail-oauth-callback");
+authUrl.searchParams.set("redirect_uri", "https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/gmail-oauth-callback");
 authUrl.searchParams.set("response_type", "code");
 authUrl.searchParams.set("scope", "https://www.googleapis.com/auth/gmail.readonly");
 authUrl.searchParams.set("access_type", "offline");
