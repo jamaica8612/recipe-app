@@ -2,3 +2,9 @@ project_id = "recipe-app"
 
 [functions.analyze-video]
 verify_jwt = false
+
+[functions.gmail-oauth-callback]
+verify_jwt = false
+
+[functions.ingest-orders]
+verify_jwt = false

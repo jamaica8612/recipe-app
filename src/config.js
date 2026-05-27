@@ -1,6 +1,8 @@
 const DEFAULT_SUPABASE_URL = 'https://xrrdokcjhjqdfvwtbenl.supabase.co';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_prnLDb7bcWORu7wrqTRsXQ_NWJL8Jnk';
 const DEFAULT_ANALYZE_ENDPOINT = 'https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/analyze-video';
+const DEFAULT_FUNCTIONS_BASE = 'https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1';
+const DEFAULT_GMAIL_REDIRECT_URI = 'https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/gmail-oauth-callback';
 
 export function getAnalyzeEndpoint() {
   const fromWindow = globalThis.RECIPE_APP_CONFIG?.analyzeEndpoint;
@@ -38,6 +40,24 @@ export function getSupabaseConfig() {
 export function saveBackendSettings({ analyzeEndpoint, supabaseAnonKey }) {
   safeLocalStorageSet('recipe-app:analyze-endpoint', normalizeEndpoint(analyzeEndpoint) || '');
   safeLocalStorageSet('recipe-app:supabase-anon-key', String(supabaseAnonKey || '').trim());
+}
+
+export function getGmailClientId() {
+  return globalThis.RECIPE_APP_CONFIG?.gmailClientId
+    || safeLocalStorageGet('recipe-app:gmail-client-id')
+    || '';
+}
+
+export function saveGmailClientId(value) {
+  safeLocalStorageSet('recipe-app:gmail-client-id', String(value || '').trim());
+}
+
+export function getGmailRedirectUri() {
+  return globalThis.RECIPE_APP_CONFIG?.gmailRedirectUri || DEFAULT_GMAIL_REDIRECT_URI;
+}
+
+export function getIngestEndpoint() {
+  return `${DEFAULT_FUNCTIONS_BASE}/ingest-orders`;
 }
 
 export function clearBackendSettings() {

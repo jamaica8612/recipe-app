@@ -7,7 +7,7 @@ import { renderDetail, bindDetail } from './views/detail.js?v=20260521-detail-v4
 import { renderCook, bindCook } from './views/cook.js?v=20260521-cook-v4';
 import { renderEditRecipe, bindEditRecipe } from './views/editRecipe.js?v=20260521-no-situation-v1';
 import { renderMembers, bindMembers } from './views/members.js';
-import { renderSettings, bindSettings } from './views/settings.js?v=20260521-icons-v1';
+import { renderSettings, bindSettings } from './views/settings.js?v=20260527-gmail-v1';
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
 import { renderFridge, bindFridge } from './views/fridge.js?v=20260527-pantry-v1';
