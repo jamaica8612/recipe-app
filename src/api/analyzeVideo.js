@@ -165,7 +165,6 @@ function normalizeAnalysis(analysis) {
   return {
     ...analysis,
     channelName: analysis.channelName || analysis.chefName || '',
-    situationTagIds: Array.isArray(analysis.situationTagIds) ? analysis.situationTagIds : [],
   };
 }
 
