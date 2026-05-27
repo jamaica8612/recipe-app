@@ -301,7 +301,7 @@ export async function loadSupabaseDataIntoLocalState() {
       id: item.source_local_id || `remote-fridge-${item.id}`,
       name: item.name,
       checked: Boolean(item.checked),
-      storage: item.storage === 'pantry' ? 'pantry' : 'fridge',
+      storage: ['pantry', 'freezer'].includes(item.storage) ? item.storage : 'fridge',
       purchasedAt: item.purchased_at || '',
       expiresAt: item.expires_at || '',
       remoteId: item.id,
@@ -503,7 +503,7 @@ async function upsertFridgeItems(supabase, userId, items) {
       source_local_id: item.id,
       name: String(item.name || '').trim(),
       checked: Boolean(item.checked),
-      storage: item.storage === 'pantry' ? 'pantry' : 'fridge',
+      storage: ['pantry', 'freezer'].includes(item.storage) ? item.storage : 'fridge',
       purchased_at: item.purchasedAt || null,
       expires_at: item.expiresAt || null,
     }));

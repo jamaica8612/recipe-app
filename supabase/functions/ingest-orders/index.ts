@@ -122,7 +122,7 @@ async function processIntegration(admin: any, integ: any) {
       source_local_id: `email-${msg.id}-${idx}`,
       name: String(item.name || "").trim(),
       checked: true,
-      storage: item.storage === "pantry" ? "pantry" : "fridge",
+      storage: ["pantry", "freezer"].includes(item.storage) ? item.storage : "fridge",
       purchased_at: headers.date
         ? new Date(headers.date).toISOString().slice(0, 10)
         : new Date().toISOString().slice(0, 10),
@@ -244,7 +244,10 @@ async function parseWithGemini(input: { subject: string; from: string; body: str
 
 규칙:
 - 식료품/식자재만 추출 (배송비, 쿠폰, 비식품 제외)
-- storage: 라면/통조림/조미료/과자/쌀/파스타/오일/장류 → "pantry", 나머지(고기/채소/유제품/냉동) → "fridge"
+- storage 분류:
+  * "pantry" — 라면/통조림/조미료/과자/쌀/파스타/오일/장류 등 실온 보관
+  * "freezer" — 냉동만두/냉동피자/아이스크림/냉동돈까스/냉동새우/냉동과일 등 명확히 냉동
+  * "fridge" — 고기/생선/채소/우유/계란/두부/김치/요거트 등 냉장 (애매하면 fridge)
 - 수량/단위는 가능한 경우만
 - 항목이 없거나 주문 메일이 아니면 items: []
 
@@ -273,7 +276,7 @@ ${input.body}`;
                     name: { type: "string" },
                     quantity: { type: "string" },
                     unit: { type: "string" },
-                    storage: { type: "string", enum: ["fridge", "pantry"] },
+                    storage: { type: "string", enum: ["fridge", "freezer", "pantry"] },
                   },
                   required: ["name", "storage"],
                 },

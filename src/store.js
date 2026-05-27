@@ -31,7 +31,7 @@ function defaultState() {
     categories: [...CATEGORIES],
     fridgeItems: [],
     analysisDrafts: [],
-    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry', pantryFocusId: null, pantrySort: 'expiry' },
+    filter: { categoryId: 'all', memberId: null, favoriteOnly: false, query: '', viewMode: 'category', fridgeFocusId: null, fridgeSort: 'expiry', fridgeCompartment: 'all', pantryFocusId: null, pantrySort: 'expiry' },
   };
 }
 
@@ -67,7 +67,7 @@ function normalizeFridgeItems(items) {
       id: item?.id || `fi-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: String(item?.name || '').trim(),
       checked: Boolean(item?.checked),
-      storage: item?.storage === 'pantry' ? 'pantry' : 'fridge',
+      storage: normalizeStorageValue(item?.storage),
       purchasedAt: normalizeDateValue(item?.purchasedAt || item?.purchased_at),
       expiresAt: normalizeDateValue(item?.expiresAt || item?.expires_at),
     }))
@@ -77,6 +77,11 @@ function normalizeFridgeItems(items) {
 function normalizeDateValue(value) {
   const text = String(value || '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+
+function normalizeStorageValue(value) {
+  if (value === 'pantry' || value === 'freezer') return value;
+  return 'fridge';
 }
 
 const initial = loadFromStorage() || defaultState();
@@ -123,6 +128,11 @@ export function setFridgeSort(sort, storage = 'fridge') {
   const next = sort === 'name' ? 'name' : 'expiry';
   const key = storage === 'pantry' ? 'pantrySort' : 'fridgeSort';
   set((s) => ({ ...s, filter: { ...s.filter, [key]: next } }));
+}
+export function setFridgeCompartment(compartment) {
+  const allowed = ['all', 'fridge', 'freezer'];
+  const next = allowed.includes(compartment) ? compartment : 'all';
+  set((s) => ({ ...s, filter: { ...s.filter, fridgeCompartment: next } }));
 }
 export function toggleFavorite(recipeId) {
   set((s) => ({
@@ -233,7 +243,7 @@ export function addFridgeItem(input) {
   const clean = String(payload.name || '').trim();
   if (!clean) return null;
 
-  const storage = payload.storage === 'pantry' ? 'pantry' : 'fridge';
+  const storage = normalizeStorageValue(payload.storage);
   const exists = state.fridgeItems.some(
     (item) => (item.storage || 'fridge') === storage && item.name.toLowerCase() === clean.toLowerCase(),
   );

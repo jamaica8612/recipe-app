@@ -10,7 +10,7 @@ import { renderMembers, bindMembers } from './views/members.js';
 import { renderSettings, bindSettings } from './views/settings.js?v=20260527-gmail-v1';
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
-import { renderFridge, bindFridge } from './views/fridge.js?v=20260527-pantry-v1';
+import { renderFridge, bindFridge } from './views/fridge.js?v=20260527-freezer-v1';
 import { icon } from './icons.js';
 
 const app = document.querySelector('#app');
