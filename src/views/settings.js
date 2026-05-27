@@ -1,7 +1,14 @@
 import { html, raw } from '../util.js';
-import { clearBackendSettings, getBackendSettings, saveBackendSettings } from '../config.js';
+import { clearBackendSettings, getBackendSettings, saveBackendSettings, getGmailClientId, saveGmailClientId } from '../config.js';
 import { addCategory, deleteCategory, getState, updateCategory } from '../store.js';
 import { deleteCategoryFromSupabase, syncCategoryToSupabase } from '../api/syncSupabase.js';
+import {
+  startGmailOAuth,
+  listGmailIntegrations,
+  deleteGmailIntegration,
+  triggerManualSync,
+  listRecentImports,
+} from '../api/gmailIntegration.js';
 import { icon } from '../icons.js';
 
 const CATEGORY_ICONS = ['🏷', '🥗', '🍲', '🍱', '🥘', '🥣', '🥪', '🍜', '🌶', '🧁'];
@@ -64,6 +71,26 @@ export function renderSettings() {
         <div class="field-help" id="settings-status"></div>
       </form>
 
+      <div class="detail-section" id="gmail-section">
+        <h3>📧 Gmail 자동입고</h3>
+        <p class="section-note">쿠팡/컬리/SSG 주문 확정 메일을 자동으로 감지해서 냉장고·실온보관에 넣어줘요.</p>
+        <form id="gmail-client-form" class="stack">
+          <label class="field">
+            <span class="field-label">Google OAuth Client ID</span>
+            <input class="input" name="gmailClientId" placeholder="xxx.apps.googleusercontent.com" value="${getGmailClientId()}" />
+          </label>
+          <button class="btn btn--secondary btn--block" type="submit">Client ID 저장</button>
+          <div class="field-help" id="gmail-client-status"></div>
+        </form>
+        <div id="gmail-connect-row" class="stack" style="margin-top:12px">
+          <button class="btn btn--primary btn--block" type="button" data-action="gmail-connect">Gmail 계정 연결</button>
+          <button class="btn btn--secondary btn--block" type="button" data-action="gmail-sync">지금 동기화</button>
+        </div>
+        <div id="gmail-status" class="field-help"></div>
+        <div id="gmail-integrations" class="stack" style="margin-top:12px"></div>
+        <div id="gmail-recent" class="stack" style="margin-top:12px"></div>
+      </div>
+
       <div class="detail-section">
         <h3>카테고리</h3>
         <form id="category-form" class="stack">
@@ -95,6 +122,55 @@ export function renderSettings() {
 }
 
 export function bindSettings(rootEl, navigate) {
+  handleGmailReturnParams(rootEl);
+  refreshGmailIntegrations(rootEl);
+  refreshGmailRecent(rootEl);
+
+  const clientForm = rootEl.querySelector('#gmail-client-form');
+  clientForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const value = new FormData(clientForm).get('gmailClientId');
+    saveGmailClientId(value);
+    const status = rootEl.querySelector('#gmail-client-status');
+    if (status) status.textContent = 'Client ID 저장 완료';
+  });
+
+  rootEl.addEventListener('click', async (e) => {
+    const action = e.target.closest('[data-action]')?.dataset.action;
+    if (action === 'gmail-connect') {
+      try {
+        await startGmailOAuth();
+      } catch (err) {
+        setGmailStatus(rootEl, err.message || String(err));
+      }
+      return;
+    }
+    if (action === 'gmail-sync') {
+      setGmailStatus(rootEl, '동기화 중...');
+      try {
+        const result = await triggerManualSync();
+        const total = (result.results || []).reduce((sum, r) => sum + (r.inserted || 0), 0);
+        setGmailStatus(rootEl, `완료: ${total}개 항목 추가`);
+        refreshGmailRecent(rootEl);
+      } catch (err) {
+        setGmailStatus(rootEl, err.message || String(err));
+      }
+      return;
+    }
+    if (action === 'gmail-disconnect') {
+      const id = e.target.closest('[data-action]').dataset.id;
+      if (!confirm('Gmail 연결을 해제할까요?')) return;
+      try {
+        await deleteGmailIntegration(id);
+        refreshGmailIntegrations(rootEl);
+        setGmailStatus(rootEl, '연결 해제됨');
+      } catch (err) {
+        setGmailStatus(rootEl, err.message || String(err));
+      }
+      return;
+    }
+  });
+
   rootEl.addEventListener('click', async (e) => {
     const target = e.target.closest('[data-action]');
     if (target?.dataset.action === 'back') history.back();
@@ -201,4 +277,86 @@ function resetCategoryForm(rootEl) {
 function setCategoryStatus(rootEl, message) {
   const status = rootEl.querySelector('#category-status');
   if (status) status.textContent = message;
+}
+
+function setGmailStatus(rootEl, message) {
+  const status = rootEl.querySelector('#gmail-status');
+  if (status) status.textContent = message || '';
+}
+
+function handleGmailReturnParams(rootEl) {
+  const hashQuery = location.hash.split('?')[1];
+  if (!hashQuery) return;
+  const params = new URLSearchParams(hashQuery);
+  const connected = params.get('gmail_connected');
+  const errorCode = params.get('gmail_error');
+  if (connected) setGmailStatus(rootEl, `${decodeURIComponent(connected)} 연결 완료`);
+  else if (errorCode) setGmailStatus(rootEl, `Gmail 연결 실패: ${errorCode}`);
+  if (connected || errorCode) {
+    history.replaceState(null, '', '#/settings');
+  }
+}
+
+async function refreshGmailIntegrations(rootEl) {
+  const container = rootEl.querySelector('#gmail-integrations');
+  if (!container) return;
+  try {
+    const list = await listGmailIntegrations();
+    if (!list.length) {
+      container.innerHTML = '<p class="section-note">연결된 Gmail 계정이 없습니다.</p>';
+      return;
+    }
+    container.innerHTML = list.map((row) => `
+      <div class="fridge-item">
+        <span class="fridge-item-main">
+          <span class="fridge-item-name">${escapeHtml(row.email_address)}</span>
+          <span class="fridge-item-meta">
+            <span>${row.last_synced_at ? '최근 동기화 ' + new Date(row.last_synced_at).toLocaleString('ko') : '아직 동기화 안 됨'}</span>
+          </span>
+        </span>
+        <button class="fridge-delete" type="button" data-action="gmail-disconnect" data-id="${row.id}" title="연결 해제">×</button>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = `<p class="section-note">목록 조회 실패: ${escapeHtml(err.message || String(err))}</p>`;
+  }
+}
+
+async function refreshGmailRecent(rootEl) {
+  const container = rootEl.querySelector('#gmail-recent');
+  if (!container) return;
+  try {
+    const items = await listRecentImports(8);
+    if (!items.length) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = `
+      <h4 style="margin:8px 0 4px">최근 자동입고</h4>
+      ${items.map((row) => {
+        const count = Array.isArray(row.parsed_items?.items) ? row.parsed_items.items.length : 0;
+        const date = row.received_at || row.created_at;
+        return `
+          <div class="fridge-item">
+            <span class="fridge-item-main">
+              <span class="fridge-item-name">${escapeHtml(row.subject || '(제목 없음)')}</span>
+              <span class="fridge-item-meta">
+                <span>${escapeHtml(row.from_address || '')}</span>
+                <span>${date ? new Date(date).toLocaleDateString('ko') : ''}</span>
+                <span>${row.status === 'parsed' ? `+${count}개 입고` : row.status === 'skipped' ? '식료품 아님' : '실패'}</span>
+              </span>
+            </span>
+          </div>
+        `;
+      }).join('')}
+    `;
+  } catch (err) {
+    container.innerHTML = `<p class="section-note">최근 입고 조회 실패: ${escapeHtml(err.message || String(err))}</p>`;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
 }
