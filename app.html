@@ -770,18 +770,20 @@
 
     /* Fridge */
     .fridge-form {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, .72fr);
-      gap: 8px;
-      align-items: start;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
       margin-bottom: 20px;
     }
-    .fridge-form .field { margin: 0; }
-    .fridge-form .primary-btn {
-      grid-column: 1 / -1;
-      width: 100%;
+    .fridge-form > .field { margin-bottom: 8px; }
+    .fridge-form-meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
     }
-    .fridge-form .field:first-child { grid-column: 1 / -1; }
+    .fridge-form-meta .field { margin: 0; }
+    .fridge-form .primary-btn { width: 100%; }
     .fridge-section { margin-top: 22px; }
     .section-title {
       font-family: var(--f-serif);
@@ -795,7 +797,7 @@
     }
     .fridge-sort {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
       gap: 6px;
       margin-bottom: 10px;
       padding: 4px;

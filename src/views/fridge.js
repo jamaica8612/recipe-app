@@ -74,23 +74,25 @@ export function renderFridge(storage = 'fridge') {
           <input class="input" name="ingredient" autocomplete="off"
                  placeholder="${meta.placeholder}" />
         </label>
-        ${isFridge ? raw(`
+        <div class="fridge-form-meta">
+          ${isFridge ? raw(`
+            <label class="field">
+              <span class="field-label">보관</span>
+              <select class="input" name="compartment">
+                <option value="fridge">🧊 냉장</option>
+                <option value="freezer">❄️ 냉동</option>
+              </select>
+            </label>
+          `) : ''}
           <label class="field">
-            <span class="field-label">보관</span>
-            <select class="input" name="compartment">
-              <option value="fridge">🧊 냉장</option>
-              <option value="freezer">❄️ 냉동</option>
-            </select>
+            <span class="field-label">입고일</span>
+            <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
           </label>
-        `) : ''}
-        <label class="field">
-          <span class="field-label">입고일</span>
-          <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
-        </label>
-        <label class="field">
-          <span class="field-label">유통기한</span>
-          <input class="input" name="expiresAt" type="date" />
-        </label>
+          <label class="field">
+            <span class="field-label">유통기한</span>
+            <input class="input" name="expiresAt" type="date" />
+          </label>
+        </div>
         <button class="primary-btn" type="submit">추가</button>
       </form>
 
