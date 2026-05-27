@@ -59,9 +59,12 @@ export function renderCook(recipeId) {
           <p class="cook-text">${step.text}</p>
 
           ${videoLink ? raw(`
-            <a class="cook-link" href="${esc(videoLink)}" target="_blank" rel="noreferrer">
+            <button class="cook-link" type="button" data-action="show-video"
+              data-video-id="${recipe.videoId}"
+              data-timestamp="${step.timestampSec || 0}">
               ${icon('play', 12)} 영상의 ${formatTimestamp(step.timestampSec || 0)}부터 보기
-            </a>
+            </button>
+            <div class="cook-video-box" id="cook-video-box" hidden></div>
           `) : ''}
         </div>
 
@@ -84,9 +87,15 @@ export function renderCook(recipeId) {
 }
 
 export function bindCook(rootEl, navigate, recipeId) {
+  rootEl.__cookCleanup?.();
+
+  const controller = new AbortController();
+  const { signal } = controller;
+  rootEl.__cookCleanup = () => controller.abort();
+
   requestWakeLock();
 
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+  document.addEventListener('visibilitychange', handleVisibilityChange, { signal });
 
   rootEl.addEventListener('click', (e) => {
     const target = e.target.closest('[data-action]');
@@ -101,7 +110,9 @@ export function bindCook(rootEl, navigate, recipeId) {
     if (target.dataset.action === 'prev-step') moveStep(rootEl, navigate, recipeId, -1);
     if (target.dataset.action === 'next-step') moveStep(rootEl, navigate, recipeId, 1);
     if (target.dataset.action === 'toggle-done') toggleDone(rootEl, recipeId);
-  });
+    if (target.dataset.action === 'show-video') toggleVideoBox(rootEl, target);
+    if (target.dataset.action === 'close-video') closeVideoBox(rootEl);
+  }, { signal });
 
   function handleVisibilityChange() {
     if (document.visibilityState === 'visible') requestWakeLock();
@@ -169,4 +180,36 @@ function saveCookPatch(rootEl, recipeId, patch) {
   } catch {
     /* ignore */
   }
+}
+
+function toggleVideoBox(rootEl, btn) {
+  const box = rootEl.querySelector('#cook-video-box');
+  if (!box) return;
+  if (!box.hidden) {
+    closeVideoBox(rootEl);
+    return;
+  }
+  const videoId = encodeURIComponent(btn.dataset.videoId || '');
+  const ts = Number(btn.dataset.timestamp) || 0;
+  box.innerHTML = `
+    <div class="cook-video-header">
+      <span>영상 미리보기</span>
+      <button class="cook-video-close" type="button" data-action="close-video">✕ 닫기</button>
+    </div>
+    <iframe
+      class="cook-video-iframe"
+      src="https://www.youtube.com/embed/${videoId}?start=${ts}&autoplay=1"
+      frameborder="0"
+      allow="autoplay; encrypted-media; picture-in-picture"
+      allowfullscreen
+    ></iframe>
+  `;
+  box.hidden = false;
+}
+
+function closeVideoBox(rootEl) {
+  const box = rootEl.querySelector('#cook-video-box');
+  if (!box) return;
+  box.innerHTML = '';
+  box.hidden = true;
 }

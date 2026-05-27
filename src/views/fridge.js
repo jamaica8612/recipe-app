@@ -74,23 +74,25 @@ export function renderFridge(storage = 'fridge') {
           <input class="input" name="ingredient" autocomplete="off"
                  placeholder="${meta.placeholder}" />
         </label>
-        ${isFridge ? raw(`
+        <div class="fridge-form-meta">
+          ${isFridge ? raw(`
+            <label class="field">
+              <span class="field-label">보관</span>
+              <select class="input" name="compartment">
+                <option value="fridge">🧊 냉장</option>
+                <option value="freezer">❄️ 냉동</option>
+              </select>
+            </label>
+          `) : ''}
           <label class="field">
-            <span class="field-label">보관</span>
-            <select class="input" name="compartment">
-              <option value="fridge">🧊 냉장</option>
-              <option value="freezer">❄️ 냉동</option>
-            </select>
+            <span class="field-label">입고일</span>
+            <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
           </label>
-        `) : ''}
-        <label class="field">
-          <span class="field-label">입고일</span>
-          <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
-        </label>
-        <label class="field">
-          <span class="field-label">유통기한</span>
-          <input class="input" name="expiresAt" type="date" />
-        </label>
+          <label class="field">
+            <span class="field-label">유통기한</span>
+            <input class="input" name="expiresAt" type="date" />
+          </label>
+        </div>
         <button class="primary-btn" type="submit">추가</button>
       </form>
 
@@ -275,6 +277,12 @@ function dedupeMatches(matches) {
 }
 
 export function bindFridge(rootEl, navigate, storage = 'fridge') {
+  // 이전 페이지(냉장고↔실온보관 이동)에서 남은 리스너 제거
+  rootEl.__fridgeCleanup?.();
+  const controller = new AbortController();
+  const { signal } = controller;
+  rootEl.__fridgeCleanup = () => controller.abort();
+
   const meta = STORAGE_META[storage] || STORAGE_META.fridge;
   rootEl.addEventListener('submit', (e) => {
     const form = e.target.closest('[data-action="add-fridge-item"]');
@@ -294,7 +302,7 @@ export function bindFridge(rootEl, navigate, storage = 'fridge') {
       if (form.elements.expiresAt) form.elements.expiresAt.value = '';
       persistFridgeItem(id);
     }
-  });
+  }, { signal });
 
   rootEl.addEventListener('click', (e) => {
     const target = e.target.closest('[data-action]');
@@ -320,7 +328,7 @@ export function bindFridge(rootEl, navigate, storage = 'fridge') {
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
     }
-  });
+  }, { signal });
 
   rootEl.addEventListener('change', (e) => {
     const target = e.target.closest('[data-action="toggle-fridge-item"]');
@@ -328,7 +336,7 @@ export function bindFridge(rootEl, navigate, storage = 'fridge') {
       toggleFridgeItem(target.dataset.id);
       persistFridgeItem(target.dataset.id);
     }
-  });
+  }, { signal });
 }
 
 function sortFridgeItems(items, sortMode) {

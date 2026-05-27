@@ -4,7 +4,7 @@
 import { RECIPES, MEMBERS, CATEGORIES } from './data.js';
 import { hasFuzzyOverlap, makeIngredientTerms, normalizeSearchText } from './ingredientMatch.js';
 
-const KEY = 'recipe-app:v1';
+const KEY = 'recipe-app:v2';
 
 function loadFromStorage() {
   try {
@@ -182,6 +182,13 @@ export function updateRecipe(id, patch) {
 }
 export function deleteRecipe(id) {
   set((s) => ({ ...s, recipes: s.recipes.filter((r) => r.id !== id) }));
+}
+
+export function setRecipeShareCode(id, shareCode) {
+  set((s) => ({
+    ...s,
+    recipes: s.recipes.map((r) => (r.id === id ? { ...r, shareCode: shareCode || null } : r)),
+  }));
 }
 
 export function addCategory(category) {

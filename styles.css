@@ -352,6 +352,44 @@ pre code { background: transparent; color: inherit; padding: 0; font-size: inher
 .row     { display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center; }
 .stack > * + * { margin-top: var(--s-3); }
 
+/* =========================================================
+   12. SHARE
+   ========================================================= */
+.share-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--c-ink);
+  color: var(--c-ink-inv);
+  font-size: var(--t-sm);
+  padding: 8px 18px;
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 999;
+}
+.share-toast.is-visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.shared-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,0,0,.45);
+  color: #fff;
+  font-size: var(--t-xs);
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+.shared-cta { text-align: center; }
+.shared-cta-msg { font-size: var(--t-sm); color: var(--c-ink-3); margin-bottom: var(--s-3); }
+
 /* Token table (shared) */
 .token-table { width: 100%; font-size: var(--t-sm); border-collapse: collapse;
                background: var(--c-surface); border: 1px solid var(--c-line);

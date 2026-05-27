@@ -1,6 +1,6 @@
 import { esc, html, raw, ytThumbnail, formatTimestamp } from '../util.js';
-import { consumeFlash, deleteRecipe, getState, toggleFavorite } from '../store.js';
-import { deleteRecipeFromSupabase, syncRecipeToSupabase } from '../api/syncSupabase.js';
+import { consumeFlash, deleteRecipe, getState, setRecipeShareCode, toggleFavorite } from '../store.js';
+import { deleteRecipeFromSupabase, generateShareCode, revokeShareCode, syncRecipeToSupabase } from '../api/syncSupabase.js';
 import { icon } from '../icons.js';
 
 export function renderDetail(recipeId) {
@@ -76,6 +76,9 @@ export function renderDetail(recipeId) {
           <div class="detail-overlay detail-overlay-right">
             <button class="detail-round-btn ${recipe.isFavorite ? 'is-on' : ''}" data-action="favorite" type="button" aria-label="즐겨찾기">${raw(icon('star', 17))}</button>
             ${videoUrl ? raw(`<a class="detail-video-btn" href="${esc(videoUrl)}" target="_blank" rel="noreferrer">${icon('external', 14)} 원본</a>`) : ''}
+          </div>
+          <div class="detail-overlay detail-overlay-bottom-right">
+            <button class="detail-round-btn ${recipe.shareCode ? 'is-shared' : ''}" id="share-icon-btn" data-action="share-icon" data-recipe-id="${esc(recipe.id)}" data-code="${esc(recipe.shareCode || '')}" type="button" aria-label="공유">${raw(icon('share', 16))}</button>
           </div>
         </div>
         <div class="recipe-detail-head">
@@ -184,7 +187,73 @@ export function bindDetail(rootEl, navigate, recipeId) {
       deleteRecipe(recipeId);
       navigate('/home');
     }
+    if (target.dataset.action === 'share-icon') {
+      const btn = rootEl.querySelector('#share-icon-btn');
+      const existingCode = target.dataset.code;
+      if (existingCode) {
+        // 이미 공유 중 → 링크 복사
+        copyShareLink(existingCode);
+        showShareToast(rootEl, '링크를 복사했습니다!');
+      } else {
+        // 공유 코드 생성
+        if (btn) btn.disabled = true;
+        try {
+          const code = await generateShareCode(recipeId);
+          setRecipeShareCode(recipeId, code);
+          updateShareIcon(rootEl, code);
+          copyShareLink(code);
+          showShareToast(rootEl, '링크를 복사했습니다!');
+        } catch (err) {
+          console.warn('Share code generation failed', err);
+          if (btn) btn.disabled = false;
+        }
+      }
+    }
   });
+
+  // 공유 아이콘 길게 누르면 링크 삭제
+  const shareIconBtn = rootEl.querySelector('#share-icon-btn');
+  if (shareIconBtn) {
+    shareIconBtn.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      const code = shareIconBtn.dataset.code;
+      if (!code) return;
+      if (!confirm('공유 링크를 삭제할까요?')) return;
+      try {
+        await revokeShareCode(recipeId);
+        setRecipeShareCode(recipeId, null);
+        updateShareIcon(rootEl, null);
+        showShareToast(rootEl, '링크를 삭제했습니다.');
+      } catch (err) {
+        console.warn('Revoke share failed', err);
+      }
+    });
+  }
+}
+
+function updateShareIcon(rootEl, code) {
+  const btn = rootEl.querySelector('#share-icon-btn');
+  if (!btn) return;
+  btn.dataset.code = code || '';
+  btn.classList.toggle('is-shared', Boolean(code));
+  btn.disabled = false;
+}
+
+function copyShareLink(code) {
+  const url = `${location.origin}${location.pathname}#/shared/${code}`;
+  navigator.clipboard.writeText(url).catch(() => {});
+}
+
+function showShareToast(rootEl, message) {
+  let toast = rootEl.querySelector('.share-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'share-toast';
+    rootEl.querySelector('.app-content')?.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('is-visible');
+  setTimeout(() => toast.classList.remove('is-visible'), 2000);
 }
 
 function ingredientChip(item, baseServings, targetServings) {

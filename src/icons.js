@@ -43,6 +43,10 @@ export function icon(name, size = 20) {
       return `<svg ${filled}><rect x="5" y="3.5" width="4" height="13" rx="1"/><rect x="11" y="3.5" width="4" height="13" rx="1"/></svg>`;
     case 'check':
       return `<svg ${attrs}><path d="m4.5 10.5 3.5 3.5L16 6"/></svg>`;
+    case 'share':
+      return `<svg ${attrs}><circle cx="15" cy="5" r="2"/><circle cx="5" cy="10" r="2"/><circle cx="15" cy="15" r="2"/><path d="m7 9 6-3M7 11l6 3"/></svg>`;
+    case 'link':
+      return `<svg ${attrs}><path d="M8.5 11.5a3.54 3.54 0 0 0 5 0l2-2a3.54 3.54 0 0 0-5-5L9 6"/><path d="M11.5 8.5a3.54 3.54 0 0 0-5 0l-2 2a3.54 3.54 0 0 0 5 5L11 14"/></svg>`;
     case 'book':
     default:
       return `<svg ${attrs}><path d="M4 4h11a2 2 0 0 1 2 2v11H6a2 2 0 0 1-2-2z"/><path d="M4 4v11a2 2 0 0 0 2 2"/></svg>`;

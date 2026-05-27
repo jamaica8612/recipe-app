@@ -66,6 +66,43 @@ export async function syncRecipeToSupabase(recipe) {
   };
 }
 
+export async function generateShareCode(localRecipeId) {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('로그인이 필요합니다.');
+
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(6)))
+    .map((b) => b.toString(36).padStart(2, '0'))
+    .join('')
+    .toUpperCase()
+    .slice(0, 8);
+
+  const { data, error } = await supabase
+    .from('recipes')
+    .update({ share_code: code })
+    .eq('user_id', userData.user.id)
+    .eq('source_local_id', localRecipeId)
+    .select('share_code')
+    .single();
+
+  if (error) throw error;
+  return data.share_code;
+}
+
+export async function revokeShareCode(localRecipeId) {
+  const supabase = getSupabaseClient();
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) throw new Error('로그인이 필요합니다.');
+
+  const { error } = await supabase
+    .from('recipes')
+    .update({ share_code: null })
+    .eq('user_id', userData.user.id)
+    .eq('source_local_id', localRecipeId);
+
+  if (error) throw error;
+}
+
 export async function deleteRecipeFromSupabase(localRecipeId) {
   const supabase = getSupabaseClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();

@@ -1,4 +1,5 @@
 const DEFAULT_SUPABASE_URL = 'https://xrrdokcjhjqdfvwtbenl.supabase.co';
+const DEFAULT_GMAIL_CLIENT_ID = '134738220610-gk4qhueff31joi565bomq284glfppler.apps.googleusercontent.com';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_prnLDb7bcWORu7wrqTRsXQ_NWJL8Jnk';
 const DEFAULT_ANALYZE_ENDPOINT = 'https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1/analyze-video';
 const DEFAULT_FUNCTIONS_BASE = 'https://xrrdokcjhjqdfvwtbenl.supabase.co/functions/v1';
@@ -45,7 +46,7 @@ export function saveBackendSettings({ analyzeEndpoint, supabaseAnonKey }) {
 export function getGmailClientId() {
   return globalThis.RECIPE_APP_CONFIG?.gmailClientId
     || safeLocalStorageGet('recipe-app:gmail-client-id')
-    || '';
+    || DEFAULT_GMAIL_CLIENT_ID;
 }
 
 export function saveGmailClientId(value) {

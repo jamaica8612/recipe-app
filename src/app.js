@@ -1,5 +1,7 @@
 import { currentRoute, onRouteChange, go } from './router.js';
-import { subscribe } from './store.js';
+import { subscribe, getState } from './store.js';
+import { getSupabaseClient } from './supabaseClient.js';
+import { loadSupabaseDataIntoLocalState } from './api/syncSupabase.js';
 import { renderHome, bindHome } from './views/home.js?v=20260521-restore-v1';
 import { renderAnalyze, bindAnalyze } from './views/analyze.js';
 import { renderPreview, bindPreview } from './views/preview.js?v=20260521-channel-v1';
@@ -11,6 +13,7 @@ import { renderSettings, bindSettings } from './views/settings.js?v=20260527-gma
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
 import { renderFridge, bindFridge } from './views/fridge.js?v=20260527-freezer-v1';
+import { renderSharedView } from './views/shared.js';
 import { icon } from './icons.js';
 
 const app = document.querySelector('#app');
@@ -92,6 +95,35 @@ async function render(route = currentRoute()) {
   bind(app);
 }
 
+// #/shared/:code → 비로그인 공유 뷰 (라우터 밖에서 처리)
+const initialHash = location.hash;
+if (initialHash.startsWith('#/shared/')) {
+  const code = initialHash.slice('#/shared/'.length).split('/')[0];
+  if (code) {
+    renderSharedView(code, app);
+    window.addEventListener('hashchange', () => {
+      if (!location.hash.startsWith('#/shared/')) render();
+    }, { once: true });
+  } else {
+    render();
+  }
+} else {
+  render();
+}
+
 onRouteChange(render);
 subscribe(() => render(activeRoute));
-render();
+
+// 로그인 상태면 자동으로 Supabase에서 데이터 불러오기
+getSupabaseClient().auth.onAuthStateChange(async (event, session) => {
+  if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
+    const state = getState();
+    if ((state.recipes || []).length === 0) {
+      try {
+        await loadSupabaseDataIntoLocalState();
+      } catch (err) {
+        console.warn('Supabase 자동 불러오기 실패:', err);
+      }
+    }
+  }
+});
