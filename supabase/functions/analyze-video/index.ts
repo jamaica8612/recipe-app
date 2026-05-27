@@ -448,7 +448,6 @@ function recipePrompt() {
     "이 YouTube 요리 영상을 한국어 레시피로 구조화하세요.",
     "요리 영상이 아니면 isRecipe를 false로 반환하세요.",
     "channelName에는 셰프 개인명이 아니라 YouTube 채널명 또는 영상 출처명을 넣으세요. 확실하지 않으면 빈 문자열로 두세요.",
-    "situationTagIds에는 허용된 태그 ID 중 적절한 것을 0~3개만 고르세요: party(홈파티), solo(혼밥), lunchbox(도시락), diet(다이어트), quick(초스피드), airfryer(에어프라이어), guest(손님상), late(야식).",
     "재료명, 수량, 단위, 조리 단계, 원본 영상 timestampSec, 팁을 추출하세요.",
     "확실하지 않은 값은 빈 문자열 또는 0으로 두고 confidence를 낮추세요.",
   ].join("\n");
@@ -462,13 +461,6 @@ function recipeResponseSchema() {
       confidence: { type: "number" },
       title: { type: "string" },
       channelName: { type: "string" },
-      situationTagIds: {
-        type: "array",
-        items: {
-          type: "string",
-          enum: ["party", "solo", "lunchbox", "diet", "quick", "airfryer", "guest", "late"],
-        },
-      },
       suggestedCategory: {
         type: "string",
         enum: ["한식", "양식", "일식", "중식", "디저트", "기타"],
@@ -509,7 +501,6 @@ function recipeResponseSchema() {
       "confidence",
       "title",
       "channelName",
-      "situationTagIds",
       "suggestedCategory",
       "servings",
       "cookTimeMin",
@@ -549,7 +540,6 @@ function normalizeGeminiRecipe(value: unknown, videoId: string) {
     isRecipe: Boolean(recipe.isRecipe),
     title: String(recipe.title || "이름 없는 레시피").trim(),
     channelName: String(recipe.channelName || recipe.chefName || "").trim(),
-    situationTagIds: normalizeSituationTagIds(recipe.situationTagIds),
     suggestedCategory: String(recipe.suggestedCategory || "기타").trim(),
     confidence: clamp(Number(recipe.confidence) || 0, 0, 1),
     needsReview: false,
@@ -559,14 +549,6 @@ function normalizeGeminiRecipe(value: unknown, videoId: string) {
     steps,
     tips: Array.isArray(recipe.tips) ? recipe.tips.map((tip) => String(tip).trim()).filter(Boolean) : [],
   };
-}
-
-function normalizeSituationTagIds(value: unknown) {
-  const allowed = new Set(["party", "solo", "lunchbox", "diet", "quick", "airfryer", "guest", "late"]);
-  if (!Array.isArray(value)) return [];
-  return Array.from(new Set(
-    value.map((item) => String(item || "").trim()).filter((item) => allowed.has(item)),
-  )).slice(0, 3);
 }
 
 function mapGeminiFailure(status: number): FailureReason {
@@ -597,7 +579,6 @@ function makeMockAnalysis(videoId: string) {
     youtubeVideoId: videoId,
     title: "새 레시피 (Edge 목업 분석)",
     channelName: "Edge 목업 채널",
-    situationTagIds: ["quick"],
     suggestedCategory: "기타",
     confidence: 0.82,
     needsReview: false,

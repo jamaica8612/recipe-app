@@ -90,7 +90,6 @@ function readRecipeFromForm(form, draft) {
     cookTimeMin: Number(form.cookTimeMin.value) || 0,
     servings: Number(form.servings.value) || 1,
     memberIds,
-    situationTagIds: [],
     videoId: draft.videoId,
     ingredients,
     steps,
