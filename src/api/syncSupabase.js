@@ -224,7 +224,7 @@ export async function loadSupabaseDataIntoLocalState() {
       .order('created_at', { ascending: false }),
     supabase
       .from('fridge_items')
-      .select('id,source_local_id,name,checked,purchased_at,expires_at,created_at')
+      .select('id,source_local_id,name,checked,storage,purchased_at,expires_at,created_at')
       .eq('user_id', userData.user.id)
       .order('created_at', { ascending: true }),
   ]);
@@ -303,6 +303,7 @@ export async function loadSupabaseDataIntoLocalState() {
       id: item.source_local_id || `remote-fridge-${item.id}`,
       name: item.name,
       checked: Boolean(item.checked),
+      storage: item.storage === 'pantry' ? 'pantry' : 'fridge',
       purchasedAt: item.purchased_at || '',
       expiresAt: item.expires_at || '',
       remoteId: item.id,
@@ -505,6 +506,7 @@ async function upsertFridgeItems(supabase, userId, items) {
       source_local_id: item.id,
       name: String(item.name || '').trim(),
       checked: Boolean(item.checked),
+      storage: item.storage === 'pantry' ? 'pantry' : 'fridge',
       purchased_at: item.purchasedAt || null,
       expires_at: item.expiresAt || null,
     }));

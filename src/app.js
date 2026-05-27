@@ -10,7 +10,7 @@ import { renderMembers, bindMembers } from './views/members.js';
 import { renderSettings, bindSettings } from './views/settings.js?v=20260521-icons-v1';
 import { renderAccount, bindAccount } from './views/account.js';
 import { renderSearch, bindSearch } from './views/search.js?v=20260521-search-v3';
-import { renderFridge, bindFridge } from './views/fridge.js?v=20260521-fridge-v5';
+import { renderFridge, bindFridge } from './views/fridge.js?v=20260527-pantry-v1';
 import { icon } from './icons.js';
 
 const app = document.querySelector('#app');
@@ -21,7 +21,7 @@ const navItems = [
   { id: 'search', href: '#/search', iconName: 'search', label: '검색' },
   { id: 'analyze', href: '#/analyze', iconName: 'plus', label: '분석' },
   { id: 'fridge', href: '#/fridge', iconName: 'fridge', label: '냉장고' },
-  { id: 'settings', href: '#/settings', iconName: 'settings', label: '설정' },
+  { id: 'pantry', href: '#/pantry', iconName: 'pantry', label: '실온보관' },
 ];
 
 function navigate(path) {
@@ -53,7 +53,8 @@ function nav(active) {
 function resolveView(route) {
   if (route.path === 'analyze') return [renderAnalyze(), (root) => bindAnalyze(root, navigate)];
   if (route.path === 'search') return [renderSearch(), (root) => bindSearch(root, navigate)];
-  if (route.path === 'fridge') return [renderFridge(), (root) => bindFridge(root, navigate)];
+  if (route.path === 'fridge') return [renderFridge('fridge'), (root) => bindFridge(root, navigate, 'fridge')];
+  if (route.path === 'pantry') return [renderFridge('pantry'), (root) => bindFridge(root, navigate, 'pantry')];
   if (route.path === 'preview') {
     const draftId = route.params[0];
     return [renderPreview(draftId), (root) => bindPreview(root, navigate, draftId)];
