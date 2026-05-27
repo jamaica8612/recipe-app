@@ -6,6 +6,7 @@ import {
   getState,
   setFridgeFocusItem,
   setFridgeSort,
+  setFridgeCompartment,
   toggleFridgeItem,
 } from '../store.js';
 import { deleteFridgeItemFromSupabase, syncFridgeItemToSupabase } from '../api/syncSupabase.js';
@@ -42,7 +43,19 @@ const STORAGE_META = {
 export function renderFridge(storage = 'fridge') {
   const meta = STORAGE_META[storage] || STORAGE_META.fridge;
   const s = getState();
-  const items = (s.fridgeItems || []).filter((item) => (item.storage || 'fridge') === storage);
+  const isFridge = storage === 'fridge';
+  const compartment = isFridge ? (s.filter.fridgeCompartment || 'all') : 'all';
+  const allItems = (s.fridgeItems || []).filter((item) => {
+    const itemStorage = item.storage || 'fridge';
+    if (isFridge) {
+      if (itemStorage !== 'fridge' && itemStorage !== 'freezer') return false;
+      if (compartment === 'fridge' && itemStorage !== 'fridge') return false;
+      if (compartment === 'freezer' && itemStorage !== 'freezer') return false;
+      return true;
+    }
+    return itemStorage === storage;
+  });
+  const items = allItems;
   const sortMode = s.filter[meta.sortKey] || 'expiry';
   const focusedItem = items.find((item) => item.id === s.filter[meta.focusKey]);
   const activeItems = focusedItem ? [focusedItem] : items.filter((item) => item.checked);
@@ -61,6 +74,15 @@ export function renderFridge(storage = 'fridge') {
           <input class="input" name="ingredient" autocomplete="off"
                  placeholder="${meta.placeholder}" />
         </label>
+        ${isFridge ? raw(`
+          <label class="field">
+            <span class="field-label">보관</span>
+            <select class="input" name="compartment">
+              <option value="fridge">🧊 냉장</option>
+              <option value="freezer">❄️ 냉동</option>
+            </select>
+          </label>
+        `) : ''}
         <label class="field">
           <span class="field-label">입고일</span>
           <input class="input" name="purchasedAt" type="date" value="${todayString()}" />
@@ -71,6 +93,14 @@ export function renderFridge(storage = 'fridge') {
         </label>
         <button class="primary-btn" type="submit">추가</button>
       </form>
+
+      ${isFridge ? raw(`
+        <div class="fridge-sort" aria-label="냉장/냉동 필터" style="margin-top:8px">
+          <button type="button" data-action="set-fridge-compartment" data-compartment="all" class="${compartment === 'all' ? 'is-on' : ''}">전체</button>
+          <button type="button" data-action="set-fridge-compartment" data-compartment="fridge" class="${compartment === 'fridge' ? 'is-on' : ''}">🧊 냉장</button>
+          <button type="button" data-action="set-fridge-compartment" data-compartment="freezer" class="${compartment === 'freezer' ? 'is-on' : ''}">❄️ 냉동</button>
+        </div>
+      `) : ''}
 
       <section class="fridge-section">
         <div class="section-row">
@@ -127,7 +157,7 @@ function renderFridgeItem(item, focusedId) {
     <div class="fridge-item ${item.checked ? 'is-on' : ''} ${focusedId === item.id ? 'is-focused' : ''} ${expiry.tone ? `is-${expiry.tone}` : ''}">
       <input type="checkbox" data-action="toggle-fridge-item" data-id="${item.id}" ${item.checked ? 'checked' : ''} aria-label="${item.name} 추천 반영" />
       <button type="button" class="fridge-item-main" data-action="focus-fridge-item" data-id="${item.id}">
-        <span class="fridge-item-name">${item.name}</span>
+        <span class="fridge-item-name">${item.storage === 'freezer' ? raw('<span title="냉동" style="margin-right:4px">❄️</span>') : ''}${item.name}</span>
         <span class="fridge-item-meta">
           ${item.purchasedAt ? raw(`<span>입고 ${formatDateLabel(item.purchasedAt)}</span>`) : raw('<span>입고일 없음</span>')}
           ${item.expiresAt ? raw(`<span>기한 ${formatDateLabel(item.expiresAt)}</span>`) : raw('<span>기한 없음</span>')}
@@ -251,9 +281,11 @@ export function bindFridge(rootEl, navigate, storage = 'fridge') {
     if (!form) return;
     e.preventDefault();
     const input = form.elements.ingredient;
+    const compartment = form.elements.compartment?.value;
+    const effectiveStorage = storage === 'fridge' && compartment === 'freezer' ? 'freezer' : storage;
     const id = addFridgeItem({
       name: input.value,
-      storage,
+      storage: effectiveStorage,
       purchasedAt: form.elements.purchasedAt?.value,
       expiresAt: form.elements.expiresAt?.value,
     });
@@ -283,6 +315,8 @@ export function bindFridge(rootEl, navigate, storage = 'fridge') {
       setFridgeFocusItem(null, storage);
     } else if (action === 'set-fridge-sort') {
       setFridgeSort(target.dataset.sort, storage);
+    } else if (action === 'set-fridge-compartment') {
+      setFridgeCompartment(target.dataset.compartment);
     } else if (action === 'open-recipe') {
       navigate(`/recipe/${id}`);
     }
