@@ -1,5 +1,5 @@
 import { html, raw } from '../util.js';
-import { clearBackendSettings, getBackendSettings, saveBackendSettings, getGmailClientId, saveGmailClientId } from '../config.js';
+import { clearBackendSettings, getBackendSettings, saveBackendSettings } from '../config.js';
 import { addCategory, deleteCategory, getState, updateCategory } from '../store.js';
 import { deleteCategoryFromSupabase, syncCategoryToSupabase } from '../api/syncSupabase.js';
 import {
@@ -74,14 +74,6 @@ export function renderSettings() {
       <div class="detail-section" id="gmail-section">
         <h3>📧 Gmail 자동입고</h3>
         <p class="section-note">쿠팡/컬리/SSG 주문 확정 메일을 자동으로 감지해서 냉장고·실온보관에 넣어줘요.</p>
-        <form id="gmail-client-form" class="stack">
-          <label class="field">
-            <span class="field-label">Google OAuth Client ID</span>
-            <input class="input" name="gmailClientId" placeholder="xxx.apps.googleusercontent.com" value="${getGmailClientId()}" />
-          </label>
-          <button class="btn btn--secondary btn--block" type="submit">Client ID 저장</button>
-          <div class="field-help" id="gmail-client-status"></div>
-        </form>
         <div id="gmail-connect-row" class="stack" style="margin-top:12px">
           <button class="btn btn--primary btn--block" type="button" data-action="gmail-connect">Gmail 계정 연결</button>
           <button class="btn btn--secondary btn--block" type="button" data-action="gmail-sync">지금 동기화</button>
@@ -125,15 +117,6 @@ export function bindSettings(rootEl, navigate) {
   handleGmailReturnParams(rootEl);
   refreshGmailIntegrations(rootEl);
   refreshGmailRecent(rootEl);
-
-  const clientForm = rootEl.querySelector('#gmail-client-form');
-  clientForm?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const value = new FormData(clientForm).get('gmailClientId');
-    saveGmailClientId(value);
-    const status = rootEl.querySelector('#gmail-client-status');
-    if (status) status.textContent = 'Client ID 저장 완료';
-  });
 
   rootEl.addEventListener('click', async (e) => {
     const action = e.target.closest('[data-action]')?.dataset.action;
