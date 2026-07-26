@@ -11,7 +11,7 @@ type FailureReason =
 
 type AnalyzeResponse = {
   ok: boolean;
-  source: "cache" | "gemini" | "mock" | "edge";
+  source: "cache" | "gemini" | "openrouter" | "mock" | "edge";
   analysis: Record<string, unknown> | null;
   failure: null | {
     reason: FailureReason;
@@ -105,14 +105,17 @@ serve(async (req) => {
   }
 
   const cached = await readCachedAnalysis(supabase, videoId);
-  if (cached) {
+  if (cached && !cached.stale) {
     return json({
       ok: true,
       source: "cache",
-      analysis: cached,
+      analysis: cached.analysis,
       failure: null,
       quota: { charged: false, remaining: null },
     });
+  }
+  if (cached?.stale) {
+    console.log(`[cache] stale text-fallback result for ${videoId}, re-analyzing`);
   }
 
   const mockFailure = detectMockFailure(body.url || "");
@@ -132,7 +135,7 @@ serve(async (req) => {
   // 댓글 가져오기 + Gemini 분석을 병렬 실행
   // Gemini는 영상만 분석 (댓글 없이) → 빠르고 저렴
   // Qwen은 댓글만 요약 → 한국어 품질 우수, 저렴
-  const [comments, analysisResult] = await Promise.all([
+  const [comments, geminiResult] = await Promise.all([
     youtubeApiKey ? fetchYouTubeComments(videoId, youtubeApiKey) : Promise.resolve([]),
     geminiKey
       ? analyzeWithGemini({
@@ -146,9 +149,35 @@ serve(async (req) => {
       : Promise.resolve({ ok: true as const, analysis: makeMockAnalysis(videoId), source: "mock" as const }),
   ]);
 
+  // Gemini 전체 실패 시 OpenRouter 텍스트 기반 폴백
+  type AnyAnalysisResult =
+    | { ok: true; source: "gemini" | "openrouter" | "mock"; model?: string; analysis: ReturnType<typeof makeMockAnalysis> }
+    | { ok: false; reason: FailureReason; message?: string };
+  let analysisResult: AnyAnalysisResult = geminiResult as AnyAnalysisResult;
+  // api_unavailable(장애/쿼터)뿐 아니라 schema_invalid(Gemini가 깨진 JSON을 뱉은 경우)도 폴백 대상.
+  // not_recipe / unavailable은 영상 자체의 문제라 텍스트로 다시 봐도 결과가 같으므로 제외.
+  const geminiReason = (geminiResult as { reason?: FailureReason }).reason;
+  const fallbackWorthy = geminiReason === "api_unavailable" || geminiReason === "schema_invalid";
+  if (!geminiResult.ok && fallbackWorthy && openrouterKey) {
+    console.log(`[fallback] Gemini failed (${geminiReason}), trying OpenRouter text fallback`);
+    const orResult = await analyzeWithOpenRouter({ videoId, youtubeApiKey: youtubeApiKey || null, openrouterKey });
+    if (orResult.ok) analysisResult = orResult as AnyAnalysisResult;
+  }
+
   if (!analysisResult.ok) {
-    await logFailure(supabase, videoId, userId, analysisResult.reason, analysisResult.message);
-    return json(failure("gemini", analysisResult.reason), 200);
+    const failResult = analysisResult as { reason: FailureReason; message?: string };
+    await logFailure(supabase, videoId, userId, failResult.reason, failResult.message);
+    // 재분석을 시도했다가 실패한 경우라면, 품질이 낮더라도 기존 결과를 돌려주는 편이 낫다.
+    if (cached) {
+      return json({
+        ok: true,
+        source: "cache",
+        analysis: cached.analysis,
+        failure: null,
+        quota: { charged: false, remaining: null },
+      });
+    }
+    return json(failure("gemini", failResult.reason), 200);
   }
 
   // 댓글 요약: OpenRouter Qwen이 있으면 사용, 없으면 빈 배열
@@ -170,7 +199,11 @@ serve(async (req) => {
     status: analysis.needsReview ? "needs_review" : "ready",
     needs_review: analysis.needsReview,
     thumbnail_url_yt: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    model_version: analysisResult.source === "gemini" ? analysisResult.model : "edge-mock-v1",
+    model_version: analysisResult.source === "gemini"
+      ? (analysisResult as { model: string }).model
+      : analysisResult.source === "openrouter"
+        ? `openrouter-${(analysisResult as { model: string }).model}`
+        : "edge-mock-v1",
     last_validated_at: new Date().toISOString(),
   });
 
@@ -205,14 +238,23 @@ async function getAuthUser(supabase: ReturnType<typeof createClient>, authHeader
 async function readCachedAnalysis(supabase: ReturnType<typeof createClient>, videoId: string) {
   const { data, error } = await supabase
     .from("video_analyses")
-    .select("raw_recipe, status, needs_review, confidence")
+    .select("raw_recipe, status, needs_review, confidence, model_version")
     .eq("youtube_video_id", videoId)
     .maybeSingle();
   if (error || !data || data.status === "failed") return null;
+
+  const raw = data.raw_recipe as Record<string, unknown>;
+  const confidence = Number(data.confidence ?? raw.confidence ?? 0);
+  const needsReview = Boolean(data.needs_review || data.status === "needs_review");
+
+  // Gemini 장애 중에 만들어진 텍스트 기반(openrouter) 저품질 결과는 영구 고정하지 않는다.
+  // Gemini가 복구되면 영상을 직접 보고 다시 뽑을 기회를 준다.
+  const fromTextFallback = String(data.model_version || "").startsWith("openrouter-");
+  const stale = fromTextFallback && (needsReview || confidence < 0.6);
+
   return {
-    ...(data.raw_recipe as Record<string, unknown>),
-    confidence: Number(data.confidence ?? (data.raw_recipe as Record<string, unknown>).confidence ?? 0),
-    needsReview: Boolean(data.needs_review || data.status === "needs_review"),
+    analysis: { ...raw, confidence, needsReview },
+    stale,
   };
 }
 
@@ -410,22 +452,42 @@ async function callGemini({
     },
   });
 
-  const maxAttempts = 2;
+  // 모델당 최대 15초 — 초과 시 abort해서 다음 모델로 넘어감
+  // (Gemini 장애 시 3모델 × 15s = 최대 45s 소비 후 OpenRouter 폴백 진입)
+  const CALL_TIMEOUT_MS = 15_000;
   let response: Response | null = null;
-  let attempt = 0;
-  while (attempt < maxAttempts) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), CALL_TIMEOUT_MS);
+  try {
     response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
       body: requestBody,
-    }).catch(() => null);
+      signal: ac.signal,
+    });
+  } catch {
+    response = null;
+  } finally {
+    clearTimeout(timer);
+  }
 
-    const transient = !response || response.status === 503 || response.status === 429;
-    if (!transient) break;
-    attempt += 1;
-    if (attempt < maxAttempts) {
-      console.error(`[gemini] transient status=${response?.status ?? "network"} model=${model} attempt=${attempt}/retrying`);
-      await new Promise((r) => setTimeout(r, 1200));
+  // 429/503 → 한 번만 재시도
+  if (response?.status === 429 || response?.status === 503) {
+    console.error(`[gemini] transient status=${response.status} model=${model}, retrying once`);
+    await new Promise((r) => setTimeout(r, 1200));
+    const ac2 = new AbortController();
+    const timer2 = setTimeout(() => ac2.abort(), CALL_TIMEOUT_MS);
+    try {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: requestBody,
+        signal: ac2.signal,
+      });
+    } catch {
+      response = null;
+    } finally {
+      clearTimeout(timer2);
     }
   }
 
@@ -465,7 +527,7 @@ async function summarizeCommentsWithQwen(
 ): Promise<CommentInsight[]> {
   try {
     const commentText = comments.slice(0, 50).join("\n");
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -496,7 +558,7 @@ ${commentText}
         max_tokens: 600,
         temperature: 0.3,
       }),
-    });
+    }, 20_000);
 
     if (!response.ok) {
       console.error(`[qwen] status=${response.status}`);
@@ -658,6 +720,17 @@ function compactGeminiError(status: number, body: string) {
   return `Gemini API 응답 오류 (${status}): ${body.slice(0, 180)}`;
 }
 
+// 외부 API 호출은 전부 상한을 둔다 — 하나라도 늘어지면 edge function 150s 벽에 걸린다.
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -665,7 +738,7 @@ function clamp(value: number, min: number, max: number) {
 async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<string[]> {
   try {
     const url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=50&order=relevance&key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, { headers: { Accept: "application/json" } });
+    const resp = await fetchWithTimeout(url, { headers: { Accept: "application/json" } }, 8_000);
     if (!resp.ok) return [];
     type CommentItem = { snippet?: { topLevelComment?: { snippet?: { textDisplay?: string } } } };
     const data = await resp.json() as { items?: CommentItem[] };
@@ -676,6 +749,145 @@ async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<st
   } catch {
     return [];
   }
+}
+
+// OpenRouter 텍스트 폴백 — Gemini 전체 실패 시
+async function analyzeWithOpenRouter({
+  videoId,
+  youtubeApiKey,
+  openrouterKey,
+}: {
+  videoId: string;
+  youtubeApiKey: string | null;
+  openrouterKey: string;
+}): Promise<
+  | { ok: true; source: "openrouter"; model: string; analysis: ReturnType<typeof makeMockAnalysis> }
+  | { ok: false; reason: FailureReason; message?: string }
+> {
+  const [metadata, transcript] = await Promise.all([
+    youtubeApiKey ? fetchVideoMetadata(videoId, youtubeApiKey) : Promise.resolve(null),
+    fetchTranscript(videoId),
+  ]);
+
+  const titlePart = metadata?.title ? `제목: ${metadata.title}` : "";
+  const descPart = metadata?.description ? `설명:\n${metadata.description.slice(0, 3000)}` : "";
+  const transcriptPart = transcript ? `자막/스크립트:\n${transcript.slice(0, 4000)}` : "";
+  const context = [titlePart, descPart, transcriptPart].filter(Boolean).join("\n\n");
+
+  if (!context.trim()) {
+    return { ok: false, reason: "api_unavailable", message: "영상 텍스트 정보를 가져올 수 없습니다." };
+  }
+
+  const prompt =
+    `다음은 YouTube 요리 영상의 텍스트 정보입니다. 이를 분석해서 레시피를 추출하세요.\n` +
+    `요리 영상이 아니면 isRecipe를 false로 반환하세요.\n` +
+    `재료명, 수량, 단위, 조리 단계, 팁을 추출하세요.\n` +
+    `확실하지 않은 값은 빈 문자열 또는 0으로 두고 confidence를 낮추세요.\n` +
+    `timestampSec은 자막에서 확인된 경우에만 입력하고, 모르면 0으로 하세요.\n\n` +
+    `${context}\n\n` +
+    `반드시 다음 JSON 형식으로만 응답하세요:\n` +
+    `{"isRecipe":true,"confidence":0.8,"title":"레시피 제목","channelName":"","suggestedCategory":"한식","servings":2,"cookTimeMin":30,` +
+    `"ingredients":[{"name":"재료명","amount":"수량","unit":"단위"}],` +
+    `"steps":[{"order":1,"text":"단계 설명","timestampSec":0}],"tips":["팁"]}`;
+
+  const models = ["deepseek/deepseek-chat", "qwen/qwen-2.5-72b-instruct"];
+
+  for (const model of models) {
+    try {
+      const response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openrouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://jamaica8612.github.io/recipe-app/",
+          "X-Title": "Recipe App",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 2000,
+          temperature: 0.2,
+          response_format: { type: "json_object" },
+        }),
+      }, 25_000);
+
+      if (!response.ok) {
+        console.error(`[openrouter] model=${model} status=${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      const text = (data.choices?.[0]?.message?.content || "").trim();
+      if (!text) continue;
+
+      let parsed: unknown;
+      try {
+        const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || text.match(/({[\s\S]*})/);
+        parsed = JSON.parse(jsonMatch ? jsonMatch[1] : text);
+      } catch {
+        console.error(`[openrouter] parse error model=${model}`);
+        continue;
+      }
+
+      const normalized = normalizeGeminiRecipe(parsed, videoId);
+      if (!normalized) continue;
+      if (!normalized.isRecipe) return { ok: false, reason: "not_recipe" };
+
+      return {
+        ok: true,
+        source: "openrouter",
+        model,
+        analysis: { ...normalized, needsReview: normalized.confidence < 0.6 } as ReturnType<typeof makeMockAnalysis>,
+      };
+    } catch (err) {
+      console.error(`[openrouter] model=${model} error=${err}`);
+    }
+  }
+
+  return { ok: false, reason: "api_unavailable", message: "OpenRouter 분석 실패" };
+}
+
+async function fetchVideoMetadata(
+  videoId: string,
+  apiKey: string,
+): Promise<{ title: string; description: string } | null> {
+  try {
+    const url =
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
+    const resp = await fetchWithTimeout(url, {}, 8_000);
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const snippet = data.items?.[0]?.snippet;
+    if (!snippet) return null;
+    return { title: snippet.title || "", description: snippet.description || "" };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchTranscript(videoId: string): Promise<string | null> {
+  // 한국어 자막 → 영어 자막 → 자동생성 한국어/영어 순으로 시도
+  const langs = ["ko", "en", "a.ko", "a.en"];
+  for (const lang of langs) {
+    try {
+      const url =
+        `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&lang=${lang}&fmt=json3`;
+      const resp = await fetchWithTimeout(url, { headers: { "User-Agent": "Mozilla/5.0" } }, 6_000);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (!Array.isArray(data.events) || !data.events.length) continue;
+      const text = (data.events as Array<{ segs?: Array<{ utf8?: string }> }>)
+        .flatMap((ev) => ev.segs || [])
+        .map((seg) => seg.utf8 || "")
+        .join("")
+        .replace(/\n/g, " ")
+        .trim();
+      if (text.length > 100) return text;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 function makeMockAnalysis(videoId: string) {
