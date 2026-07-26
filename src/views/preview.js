@@ -52,6 +52,7 @@ function sourceLabel(source) {
   if (source === 'cache') return '캐시 결과';
   if (source === 'manual') return '수동 입력';
   if (source === 'mock') return '목업 분석';
+  if (source === 'openrouter') return '자막·설명 기반 분석';
   return 'Gemini 결과';
 }
 

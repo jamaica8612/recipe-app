@@ -501,7 +501,7 @@ async function summarizeCommentsWithQwen(
 ): Promise<CommentInsight[]> {
   try {
     const commentText = comments.slice(0, 50).join("\n");
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -532,7 +532,7 @@ ${commentText}
         max_tokens: 600,
         temperature: 0.3,
       }),
-    });
+    }, 20_000);
 
     if (!response.ok) {
       console.error(`[qwen] status=${response.status}`);
@@ -694,6 +694,17 @@ function compactGeminiError(status: number, body: string) {
   return `Gemini API 응답 오류 (${status}): ${body.slice(0, 180)}`;
 }
 
+// 외부 API 호출은 전부 상한을 둔다 — 하나라도 늘어지면 edge function 150s 벽에 걸린다.
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -701,7 +712,7 @@ function clamp(value: number, min: number, max: number) {
 async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<string[]> {
   try {
     const url = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=${encodeURIComponent(videoId)}&maxResults=50&order=relevance&key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url, { headers: { Accept: "application/json" } });
+    const resp = await fetchWithTimeout(url, { headers: { Accept: "application/json" } }, 8_000);
     if (!resp.ok) return [];
     type CommentItem = { snippet?: { topLevelComment?: { snippet?: { textDisplay?: string } } } };
     const data = await resp.json() as { items?: CommentItem[] };
@@ -757,7 +768,7 @@ async function analyzeWithOpenRouter({
 
   for (const model of models) {
     try {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${openrouterKey}`,
@@ -772,7 +783,7 @@ async function analyzeWithOpenRouter({
           temperature: 0.2,
           response_format: { type: "json_object" },
         }),
-      });
+      }, 25_000);
 
       if (!response.ok) {
         console.error(`[openrouter] model=${model} status=${response.status}`);
@@ -817,7 +828,7 @@ async function fetchVideoMetadata(
   try {
     const url =
       `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${encodeURIComponent(videoId)}&key=${encodeURIComponent(apiKey)}`;
-    const resp = await fetch(url);
+    const resp = await fetchWithTimeout(url, {}, 8_000);
     if (!resp.ok) return null;
     const data = await resp.json();
     const snippet = data.items?.[0]?.snippet;
@@ -835,7 +846,7 @@ async function fetchTranscript(videoId: string): Promise<string | null> {
     try {
       const url =
         `https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&lang=${lang}&fmt=json3`;
-      const resp = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const resp = await fetchWithTimeout(url, { headers: { "User-Agent": "Mozilla/5.0" } }, 6_000);
       if (!resp.ok) continue;
       const data = await resp.json();
       if (!Array.isArray(data.events) || !data.events.length) continue;
