@@ -235,10 +235,16 @@ async function getAuthUser(supabase: ReturnType<typeof createClient>, authHeader
   };
 }
 
+// 텍스트 기반 폴백 결과를 stale로 볼 기준.
+// 폴백 모델은 자막·설명만 보고도 스스로 0.8 안팎을 매기기 때문에, 기존 0.6 임계값에는
+// 실제 결과가 거의 걸리지 않았다. 임계값을 올리고, 오래된 결과는 품질과 무관하게 한 번 더 시도한다.
+const FALLBACK_MIN_CONFIDENCE = 0.9;
+const FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 async function readCachedAnalysis(supabase: ReturnType<typeof createClient>, videoId: string) {
   const { data, error } = await supabase
     .from("video_analyses")
-    .select("raw_recipe, status, needs_review, confidence, model_version")
+    .select("raw_recipe, status, needs_review, confidence, model_version, last_validated_at")
     .eq("youtube_video_id", videoId)
     .maybeSingle();
   if (error || !data || data.status === "failed") return null;
@@ -247,10 +253,15 @@ async function readCachedAnalysis(supabase: ReturnType<typeof createClient>, vid
   const confidence = Number(data.confidence ?? raw.confidence ?? 0);
   const needsReview = Boolean(data.needs_review || data.status === "needs_review");
 
-  // Gemini 장애 중에 만들어진 텍스트 기반(openrouter) 저품질 결과는 영구 고정하지 않는다.
+  // Gemini 장애 중에 만들어진 텍스트 기반(openrouter) 결과는 영구 고정하지 않는다.
   // Gemini가 복구되면 영상을 직접 보고 다시 뽑을 기회를 준다.
+  // 재분석이 실패하면 호출부에서 기존 캐시를 그대로 돌려주므로 회귀 위험은 없고,
+  // 재분석이 성공하면 model_version이 gemini-*로 바뀌어 더는 stale로 잡히지 않는다.
   const fromTextFallback = String(data.model_version || "").startsWith("openrouter-");
-  const stale = fromTextFallback && (needsReview || confidence < 0.6);
+  const validatedAt = Date.parse(String(data.last_validated_at || ""));
+  const ageMs = Number.isNaN(validatedAt) ? Number.POSITIVE_INFINITY : Date.now() - validatedAt;
+  const stale = fromTextFallback
+    && (needsReview || confidence < FALLBACK_MIN_CONFIDENCE || ageMs > FALLBACK_MAX_AGE_MS);
 
   return {
     analysis: { ...raw, confidence, needsReview },

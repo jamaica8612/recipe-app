@@ -175,7 +175,7 @@ export function renderPreview(draftId) {
       `) : raw(`
         <div class="callout callout--olive">
           <span class="icon">✓</span>
-          <div><strong>분석 완료</strong><br>${response.source} 결과입니다. 저장 전 내용을 확인하고 고쳐주세요.</div>
+          <div><strong>분석 완료</strong><br>${sourceLabel(response.source)}입니다. 저장 전 내용을 확인하고 고쳐주세요.</div>
         </div>
       `)}
       ${raw(reviewNote)}
