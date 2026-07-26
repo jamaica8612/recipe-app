@@ -246,6 +246,10 @@ async function getAuthUser(supabase: ReturnType<typeof createClient>, authHeader
 // 실제 결과가 거의 걸리지 않았다. 임계값을 올리고, 오래된 결과는 품질과 무관하게 한 번 더 시도한다.
 const FALLBACK_MIN_CONFIDENCE = 0.9;
 const FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// 재분석은 비싸다 — Gemini 3모델(45s) + OpenRouter(25s)로 최대 70초가 걸린다.
+// Gemini가 계속 죽어 있으면 폴백 결과가 계속 폴백으로 갱신되므로, 쿨다운이 없으면
+// 같은 영상을 열 때마다 그 비용을 다시 치른다. 재시도 간격에 하한을 둔다.
+const FALLBACK_RETRY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 async function readCachedAnalysis(supabase: ReturnType<typeof createClient>, videoId: string) {
   const { data, error } = await supabase
@@ -267,6 +271,7 @@ async function readCachedAnalysis(supabase: ReturnType<typeof createClient>, vid
   const validatedAt = Date.parse(String(data.last_validated_at || ""));
   const ageMs = Number.isNaN(validatedAt) ? Number.POSITIVE_INFINITY : Date.now() - validatedAt;
   const stale = fromTextFallback
+    && ageMs > FALLBACK_RETRY_COOLDOWN_MS
     && (needsReview || confidence < FALLBACK_MIN_CONFIDENCE || ageMs > FALLBACK_MAX_AGE_MS);
 
   return {
