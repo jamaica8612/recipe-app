@@ -105,14 +105,17 @@ serve(async (req) => {
   }
 
   const cached = await readCachedAnalysis(supabase, videoId);
-  if (cached) {
+  if (cached && !cached.stale) {
     return json({
       ok: true,
       source: "cache",
-      analysis: cached,
+      analysis: cached.analysis,
       failure: null,
       quota: { charged: false, remaining: null },
     });
+  }
+  if (cached?.stale) {
+    console.log(`[cache] stale text-fallback result for ${videoId}, re-analyzing`);
   }
 
   const mockFailure = detectMockFailure(body.url || "");
@@ -151,8 +154,12 @@ serve(async (req) => {
     | { ok: true; source: "gemini" | "openrouter" | "mock"; model?: string; analysis: ReturnType<typeof makeMockAnalysis> }
     | { ok: false; reason: FailureReason; message?: string };
   let analysisResult: AnyAnalysisResult = geminiResult as AnyAnalysisResult;
-  if (!geminiResult.ok && (geminiResult as { reason: FailureReason }).reason === "api_unavailable" && openrouterKey) {
-    console.log("[fallback] Gemini unavailable, trying OpenRouter text fallback");
+  // api_unavailable(장애/쿼터)뿐 아니라 schema_invalid(Gemini가 깨진 JSON을 뱉은 경우)도 폴백 대상.
+  // not_recipe / unavailable은 영상 자체의 문제라 텍스트로 다시 봐도 결과가 같으므로 제외.
+  const geminiReason = (geminiResult as { reason?: FailureReason }).reason;
+  const fallbackWorthy = geminiReason === "api_unavailable" || geminiReason === "schema_invalid";
+  if (!geminiResult.ok && fallbackWorthy && openrouterKey) {
+    console.log(`[fallback] Gemini failed (${geminiReason}), trying OpenRouter text fallback`);
     const orResult = await analyzeWithOpenRouter({ videoId, youtubeApiKey: youtubeApiKey || null, openrouterKey });
     if (orResult.ok) analysisResult = orResult as AnyAnalysisResult;
   }
@@ -160,6 +167,16 @@ serve(async (req) => {
   if (!analysisResult.ok) {
     const failResult = analysisResult as { reason: FailureReason; message?: string };
     await logFailure(supabase, videoId, userId, failResult.reason, failResult.message);
+    // 재분석을 시도했다가 실패한 경우라면, 품질이 낮더라도 기존 결과를 돌려주는 편이 낫다.
+    if (cached) {
+      return json({
+        ok: true,
+        source: "cache",
+        analysis: cached.analysis,
+        failure: null,
+        quota: { charged: false, remaining: null },
+      });
+    }
     return json(failure("gemini", failResult.reason), 200);
   }
 
@@ -221,14 +238,23 @@ async function getAuthUser(supabase: ReturnType<typeof createClient>, authHeader
 async function readCachedAnalysis(supabase: ReturnType<typeof createClient>, videoId: string) {
   const { data, error } = await supabase
     .from("video_analyses")
-    .select("raw_recipe, status, needs_review, confidence")
+    .select("raw_recipe, status, needs_review, confidence, model_version")
     .eq("youtube_video_id", videoId)
     .maybeSingle();
   if (error || !data || data.status === "failed") return null;
+
+  const raw = data.raw_recipe as Record<string, unknown>;
+  const confidence = Number(data.confidence ?? raw.confidence ?? 0);
+  const needsReview = Boolean(data.needs_review || data.status === "needs_review");
+
+  // Gemini 장애 중에 만들어진 텍스트 기반(openrouter) 저품질 결과는 영구 고정하지 않는다.
+  // Gemini가 복구되면 영상을 직접 보고 다시 뽑을 기회를 준다.
+  const fromTextFallback = String(data.model_version || "").startsWith("openrouter-");
+  const stale = fromTextFallback && (needsReview || confidence < 0.6);
+
   return {
-    ...(data.raw_recipe as Record<string, unknown>),
-    confidence: Number(data.confidence ?? (data.raw_recipe as Record<string, unknown>).confidence ?? 0),
-    needsReview: Boolean(data.needs_review || data.status === "needs_review"),
+    analysis: { ...raw, confidence, needsReview },
+    stale,
   };
 }
 

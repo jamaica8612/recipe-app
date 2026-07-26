@@ -12,6 +12,9 @@ const FAILURE_COPY = {
 
 const EMPTY_QUOTA = { charged: false, remaining: null };
 
+// Edge Function 자체 상한은 150초라, 그보다 먼저 끊어서 사용자에게 상황을 알려준다.
+const ANALYZE_TIMEOUT_MS = 90_000;
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -67,12 +70,15 @@ export async function reportAnalysis(videoId, message = '') {
 }
 
 async function analyzeViaEdgeFunction({ endpoint, url, videoId }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
   try {
     const headers = await getAnalyzeRequestHeaders();
     const res = await fetch(endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({ url, videoId }),
+      signal: controller.signal,
     });
     const data = await res.json().catch(() => null);
     if (!res.ok) {
@@ -83,8 +89,17 @@ async function analyzeViaEdgeFunction({ endpoint, url, videoId }) {
       });
     }
     return normalizeAnalyzeResponse(data, 'edge');
-  } catch {
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      return failureResponse({
+        source: 'edge',
+        reason: 'api_unavailable',
+        message: '분석이 90초를 넘겨 중단했습니다. 잠시 후 다시 시도하거나 수동으로 입력해 주세요.',
+      });
+    }
     return failureResponse({ source: 'edge', reason: 'api_unavailable' });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
