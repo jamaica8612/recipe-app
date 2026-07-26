@@ -190,14 +190,18 @@ serve(async (req) => {
     commentInsights,
   };
 
+  // 모델이 뱉은 텍스트에 NUL이나 짝 없는 서로게이트가 섞여 있으면 PostgREST가 본문을
+  // 파싱하지 못하고 "Empty or invalid json"으로 거절한다. 저장 직전에 한 번 씻어낸다.
+  const storable = sanitizeForJson(analysis);
+
   const { error } = await supabase.from("video_analyses").upsert({
     youtube_video_id: videoId,
-    title: analysis.title,
-    raw_recipe: analysis,
-    suggested_category: analysis.suggestedCategory,
-    confidence: analysis.confidence,
-    status: analysis.needsReview ? "needs_review" : "ready",
-    needs_review: analysis.needsReview,
+    title: storable.title,
+    raw_recipe: storable,
+    suggested_category: storable.suggestedCategory,
+    confidence: storable.confidence,
+    status: storable.needsReview ? "needs_review" : "ready",
+    needs_review: storable.needsReview,
     thumbnail_url_yt: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
     model_version: analysisResult.source === "gemini"
       ? (analysisResult as { model: string }).model
@@ -207,15 +211,17 @@ serve(async (req) => {
     last_validated_at: new Date().toISOString(),
   });
 
+  // 저장 실패는 분석 실패가 아니다. 캐싱만 못 했을 뿐 결과 자체는 멀쩡하므로
+  // 500으로 버리지 않고 그대로 돌려준다 (다음 요청에서 다시 분석하게 된다).
   if (error) {
-    await logFailure(supabase, videoId, userId, "api_unavailable", error.message);
-    return json(failure("edge", "api_unavailable"), 500);
+    console.error(`[cache] upsert failed for ${videoId}: ${error.message}`);
+    await logFailure(supabase, videoId, userId, "api_unavailable", `캐시 저장 실패: ${error.message}`);
   }
 
   return json({
     ok: true,
     source: analysisResult.source,
-    analysis,
+    analysis: storable,
     failure: null,
     quota: {
       charged: false,
@@ -744,6 +750,18 @@ async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: num
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+// Postgres의 json 타입은 NUL(U+0000)을 저장하지 못하고, 짝 없는 서로게이트가 섞인 본문은
+// PostgREST가 아예 파싱하지 못해 "Empty or invalid json"(PGRST102)으로 거절한다.
+// 모델이 뱉은 자막/설명 텍스트에서 실제로 나올 수 있는 값들이라 저장 전에 제거한다.
+function sanitizeForJson<T>(value: T): T {
+  const text = JSON.stringify(value)
+    .replace(/\\u0000/g, "")
+    // ES2019 well-formed stringify는 짝 없는 서로게이트만 \uD800~\uDFFF 이스케이프로 남긴다.
+    // (정상적인 서로게이트 쌍은 이스케이프되지 않으므로 이모지 등은 영향받지 않는다.)
+    .replace(/\\ud[89a-f][0-9a-f]{2}/gi, "");
+  return JSON.parse(text);
 }
 
 async function fetchYouTubeComments(videoId: string, apiKey: string): Promise<string[]> {
