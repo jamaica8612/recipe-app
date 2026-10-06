@@ -72,3 +72,5 @@ npx http-server . -p 5180 -c-1
 
 - [`supabase/README.md`](supabase/README.md) — 백엔드 (DB·Edge Functions)
 - [`supabase/functions/ingest-orders/README.md`](supabase/functions/ingest-orders/README.md) — Gmail 자동입고 셋업
+- [`renewal-plan.html`](renewal-plan.html) — 리뉴얼 기획서 (자막 추출 비용 최적화, 기능 개편, 일정)
+- [`renewal-design.html`](renewal-design.html) — 리뉴얼 디자인 시안 v3 ‘노른자’ (핵심 화면 9개, 토큰)
